@@ -6,6 +6,8 @@ Markie 是一个面向内容创作者的 Markdown 海报生成工具。你可以
 
 Markie is a Markdown-to-poster generator for creators. It turns Markdown into polished shareable images, PDFs, or HTML pages, with flexible control over themes, typography, layout, decorations, and export sizes.
 
+在线体验 / Live Demo: https://aiibskyler.github.io/Markie/
+
 ## 中文说明
 
 ### 项目简介
@@ -212,6 +214,7 @@ npm run preview
 This project already includes a GitHub Pages workflow:
 
 - `.github/workflows/deploy-pages.yml`
+- Live site: https://aiibskyler.github.io/Markie/
 
 To deploy:
 

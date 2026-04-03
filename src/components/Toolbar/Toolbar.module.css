@@ -1,0 +1,127 @@
+.toolbar {
+  display: flex;
+  align-items: center;
+  height: 48px;
+  padding: 0 16px;
+  background: var(--app-toolbar-bg);
+  border-bottom: 1px solid var(--app-border);
+  flex-shrink: 0;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 24px;
+}
+
+.logo {
+  height: 28px;
+  width: auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 24px;
+}
+
+.buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn:hover {
+  background: var(--app-hover);
+  color: var(--app-text);
+}
+
+.btn.active {
+  background: var(--app-accent-soft);
+  border-color: var(--app-accent-border);
+  color: var(--app-accent-text);
+}
+
+.btnIcon {
+  font-size: 14px;
+}
+
+.btnLabel {
+  font-size: 13px;
+}
+
+.right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.langBtn {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface);
+  color: var(--app-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  letter-spacing: 0.5px;
+}
+
+.langBtn:hover {
+  background: var(--app-hover);
+  color: var(--app-text);
+}
+
+.themeToggle {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface);
+  color: var(--app-text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.themeToggle:hover {
+  background: var(--app-hover);
+  color: var(--app-text);
+}
+
+.github {
+  font-size: 12px;
+  color: var(--app-text-dimmed);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.github:hover {
+  color: var(--app-text);
+}

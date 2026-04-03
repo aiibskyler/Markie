@@ -1,0 +1,100 @@
+.panel {
+  width: 320px;
+  height: 100%;
+  background: var(--app-panel-bg);
+  border-right: 1px solid var(--app-border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid var(--app-border);
+  flex-shrink: 0;
+}
+
+.header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--app-text);
+  margin: 0;
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  color: var(--app-text-dimmed);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.closeBtn:hover {
+  color: var(--app-text);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 16px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.themeCard {
+  background: var(--app-surface);
+  border: 2px solid transparent;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  padding: 0;
+}
+
+.themeCard:hover {
+  background: var(--app-surface-hover);
+}
+
+.themeCard.active {
+  border-color: var(--app-accent);
+}
+
+.preview {
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.previewText {
+  font-size: 28px;
+  font-weight: 700;
+  opacity: 0.8;
+}
+
+.info {
+  padding: 8px 10px;
+}
+
+.name {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--app-text);
+}
+
+.font {
+  display: block;
+  font-size: 11px;
+  color: var(--app-text-dimmed);
+  margin-top: 2px;
+}

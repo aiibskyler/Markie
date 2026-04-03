@@ -1,3 +1,4 @@
+import { FiGithub } from 'react-icons/fi';
 import { useStore } from '../../stores/useStore';
 import { t } from '../../i18n';
 import styles from './Toolbar.module.css';
@@ -6,7 +7,7 @@ export default function Toolbar() {
   const { activePanel, setActivePanel, appTheme, setAppTheme, language, setLanguage } = useStore();
 
   const buttons = [
-    { panel: 'theme' as const, label: t('toolbar.theme', language), icon: '🎨' },
+    { panel: 'size' as const, label: t('toolbar.size', language), icon: '📐' },
     { panel: 'style' as const, label: t('toolbar.style', language), icon: '✏️' },
     { panel: 'decor' as const, label: t('toolbar.decor', language), icon: '🖼️' },
     { panel: 'export' as const, label: t('toolbar.export', language), icon: '📤' },
@@ -45,12 +46,14 @@ export default function Toolbar() {
           {appTheme === 'dark' ? '☀️' : '🌙'}
         </button>
         <a
-          href="https://github.com"
+          href="https://github.com/aiibskyler/Markie"
           target="_blank"
           rel="noopener noreferrer"
           className={styles.github}
+          title="GitHub"
+          aria-label="Open GitHub repository"
         >
-          GitHub
+          <FiGithub />
         </a>
       </div>
     </div>

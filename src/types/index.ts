@@ -225,6 +225,6 @@ export interface AppState {
   setPreviewScale: (scale: number) => void;
 
   // UI state
-  activePanel: 'none' | 'theme' | 'style' | 'decor' | 'export';
-  setActivePanel: (panel: 'none' | 'theme' | 'style' | 'decor' | 'export') => void;
+  activePanel: 'none' | 'size' | 'style' | 'decor' | 'export';
+  setActivePanel: (panel: 'none' | 'size' | 'style' | 'decor' | 'export') => void;
 }

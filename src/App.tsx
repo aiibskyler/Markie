@@ -2,7 +2,7 @@ import { useStore } from './stores/useStore';
 import Toolbar from './components/Toolbar';
 import Editor from './components/Editor';
 import Preview from './components/Preview';
-import ThemePanel from './components/ThemePanel';
+import SizePanel from './components/SizePanel';
 import StylePanel from './components/StylePanel';
 import DecorPanel from './components/DecorPanel';
 import ExportDialog from './components/ExportDialog';
@@ -16,7 +16,7 @@ function App() {
     <div className={`app ${appTheme}`}>
       <Toolbar />
       <div className="main">
-        {activePanel === 'theme' && <ThemePanel />}
+        {activePanel === 'size' && <SizePanel />}
         {activePanel === 'style' && <StylePanel />}
         {activePanel === 'decor' && <DecorPanel />}
         {activePanel === 'export' && <ExportDialog />}

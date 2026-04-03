@@ -1,11 +1,13 @@
 .toolbar {
   display: flex;
   align-items: center;
-  height: 48px;
-  padding: 0 16px;
+  height: 56px;
+  padding: 0 18px;
   background: var(--app-toolbar-bg);
   border-bottom: 1px solid var(--app-border);
   flex-shrink: 0;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(18px);
 }
 
 .brand {
@@ -13,115 +15,144 @@
   align-items: center;
   gap: 8px;
   margin-right: 24px;
+  padding: 0;
+  position: relative;
+}
+
+.brand::before {
+  content: '';
+  position: absolute;
+  inset: -6px -10px;
+  background: radial-gradient(circle at 50% 50%, var(--app-brand-glow), transparent 72%);
+  pointer-events: none;
+  opacity: 0.9;
 }
 
 .logo {
-  height: 28px;
+  height: 32px;
   width: auto;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-right: 24px;
+  display: block;
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 1px 0 var(--app-brand-edge)) drop-shadow(0 8px 18px rgba(124, 92, 252, 0.14));
 }
 
 .buttons {
   display: flex;
-  gap: 4px;
+  gap: 6px;
+  padding: 4px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
 }
 
 .btn {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 32px;
-  padding: 0 12px;
+  height: 34px;
+  padding: 0 13px;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--app-text-muted);
+  border-radius: 9px;
+  color: var(--app-toolbar-text);
   font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.2s ease;
 }
 
 .btn:hover {
   background: var(--app-hover);
   color: var(--app-text);
+  transform: translateY(-1px);
 }
 
 .btn.active {
   background: var(--app-accent-soft);
   border-color: var(--app-accent-border);
   color: var(--app-accent-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .btnIcon {
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .btnLabel {
   font-size: 13px;
+  letter-spacing: 0.01em;
 }
 
 .right {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .langBtn {
-  height: 28px;
-  padding: 0 8px;
-  border-radius: 6px;
+  height: 32px;
+  min-width: 38px;
+  padding: 0 10px;
+  border-radius: 10px;
   border: 1px solid var(--app-border);
   background: var(--app-surface);
-  color: var(--app-text-muted);
+  color: var(--app-toolbar-text-strong);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s;
+  transition: all 0.2s ease;
   letter-spacing: 0.5px;
 }
 
 .langBtn:hover {
   background: var(--app-hover);
   color: var(--app-text);
+  transform: translateY(-1px);
 }
 
 .themeToggle {
   width: 32px;
   height: 32px;
-  border-radius: 6px;
+  border-radius: 10px;
   border: 1px solid var(--app-border);
   background: var(--app-surface);
-  color: var(--app-text-muted);
+  color: var(--app-toolbar-text-strong);
   font-size: 16px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s;
+  transition: all 0.2s ease;
 }
 
 .themeToggle:hover {
   background: var(--app-hover);
   color: var(--app-text);
+  transform: translateY(-1px);
 }
 
 .github {
-  font-size: 12px;
-  color: var(--app-text-dimmed);
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface);
+  color: var(--app-toolbar-text);
   text-decoration: none;
-  transition: color 0.15s;
+  font-size: 16px;
+  transition: all 0.2s ease;
 }
 
 .github:hover {
-  color: var(--app-text);
+  color: var(--app-toolbar-text-strong);
+  background: var(--app-hover);
+  transform: translateY(-1px);
 }

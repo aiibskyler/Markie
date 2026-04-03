@@ -21,14 +21,16 @@ body {
 /* Dark theme (default) */
 .app.dark {
   --app-bg: #15152a;
-  --app-toolbar-bg: #131327;
+  --app-toolbar-bg: rgba(19, 19, 39, 0.88);
   --app-border: rgba(255, 255, 255, 0.06);
   --app-panel-bg: #1e1e2e;
   --app-editor-bg: #1a1a2e;
   --app-preview-bg: #22223a;
   --app-text: #fff;
-  --app-text-muted: rgba(255, 255, 255, 0.6);
-  --app-text-dimmed: rgba(255, 255, 255, 0.4);
+  --app-text-strong: #ffffff;
+  --app-text-secondary: rgba(255, 255, 255, 0.82);
+  --app-text-muted: rgba(255, 255, 255, 0.72);
+  --app-text-dimmed: rgba(255, 255, 255, 0.58);
   --app-text-faint: rgba(255, 255, 255, 0.2);
   --app-hover: rgba(255, 255, 255, 0.06);
   --app-surface: rgba(255, 255, 255, 0.04);
@@ -45,19 +47,25 @@ body {
   --app-accent-soft: rgba(124, 92, 252, 0.15);
   --app-accent-border: rgba(124, 92, 252, 0.3);
   --app-accent-text: #c084fc;
+  --app-toolbar-text: rgba(255, 255, 255, 0.9);
+  --app-toolbar-text-strong: #ffffff;
+  --app-brand-glow: rgba(255, 255, 255, 0.22);
+  --app-brand-edge: rgba(255, 255, 255, 0.72);
 }
 
 /* Light theme */
 .app.light {
   --app-bg: #f5f5f7;
-  --app-toolbar-bg: #ffffff;
+  --app-toolbar-bg: rgba(255, 255, 255, 0.86);
   --app-border: rgba(0, 0, 0, 0.08);
   --app-panel-bg: #ffffff;
   --app-editor-bg: #ffffff;
   --app-preview-bg: #eaeaef;
   --app-text: #1a1a2e;
-  --app-text-muted: rgba(0, 0, 0, 0.55);
-  --app-text-dimmed: rgba(0, 0, 0, 0.35);
+  --app-text-strong: #111827;
+  --app-text-secondary: rgba(17, 24, 39, 0.84);
+  --app-text-muted: rgba(17, 24, 39, 0.72);
+  --app-text-dimmed: rgba(17, 24, 39, 0.56);
   --app-text-faint: rgba(0, 0, 0, 0.2);
   --app-hover: rgba(0, 0, 0, 0.04);
   --app-surface: rgba(0, 0, 0, 0.03);
@@ -74,6 +82,10 @@ body {
   --app-accent-soft: rgba(124, 92, 252, 0.1);
   --app-accent-border: rgba(124, 92, 252, 0.25);
   --app-accent-text: #6a48e6;
+  --app-toolbar-text: rgba(17, 24, 39, 0.9);
+  --app-toolbar-text-strong: #1a1a2e;
+  --app-brand-glow: rgba(124, 92, 252, 0.12);
+  --app-brand-edge: rgba(255, 255, 255, 0.98);
 }
 
 /* ========== Layout ========== */

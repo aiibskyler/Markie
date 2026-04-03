@@ -55,6 +55,8 @@ function SelectField<T extends string>({ value, options, onChange, label }: {
 export default function DecorPanel() {
   const { decoration, updateDecoration, setActivePanel, language } = useStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const defaultWatermarkText = language === 'zh' ? '水印' : 'WATERMARK';
 
   const handleWatermarkImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -76,70 +78,100 @@ export default function DecorPanel() {
       </div>
       <div className={styles.content}>
         <Section title={L('decor.watermark')}>
-          <Toggle label={L('decor.enable')} checked={decoration.watermark.enabled} onChange={(v) => updateDecoration({ watermark: { ...decoration.watermark, enabled: v } } as any)} />
-          <SelectField label={L('decor.type')} value={decoration.watermark.type} options={[
-            { value: 'text' as const, label: L('decor.text') },
-            { value: 'image' as const, label: L('decor.image') },
-          ]} onChange={(v) => updateDecoration({ watermark: { ...decoration.watermark, type: v } } as any)} />
-          {decoration.watermark.type === 'text' && (
-            <TextField label={L('decor.watermarkText')} value={decoration.watermark.text} onChange={(v) => updateDecoration({ watermark: { ...decoration.watermark, text: v } } as any)} placeholder="e.g. Confidential" />
-          )}
-          {decoration.watermark.type === 'image' && (
-            <div className={styles.uploadField}>
-              <span>{L('decor.uploadImage')}</span>
-              <button className={styles.uploadBtn} onClick={() => fileInputRef.current?.click()}>{L('decor.chooseFile')}</button>
-              <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleWatermarkImageUpload} />
+          <Toggle
+            label={L('decor.enable')}
+            checked={decoration.watermark.enabled}
+            onChange={(v) => updateDecoration({
+              watermark: {
+                ...decoration.watermark,
+                enabled: v,
+                text: v && decoration.watermark.type === 'text' && !decoration.watermark.text.trim()
+                  ? defaultWatermarkText
+                  : decoration.watermark.text,
+              }
+            } as any)}
+          />
+          {decoration.watermark.enabled && (
+            <div className={styles.sectionBody}>
+              <SelectField label={L('decor.type')} value={decoration.watermark.type} options={[
+                { value: 'text' as const, label: L('decor.text') },
+                { value: 'image' as const, label: L('decor.image') },
+              ]} onChange={(v) => updateDecoration({ watermark: { ...decoration.watermark, type: v } } as any)} />
+              {decoration.watermark.type === 'text' && (
+                <TextField label={L('decor.watermarkText')} value={decoration.watermark.text} onChange={(v) => updateDecoration({ watermark: { ...decoration.watermark, text: v } } as any)} placeholder="e.g. Confidential" />
+              )}
+              {decoration.watermark.type === 'image' && (
+                <div className={styles.uploadField}>
+                  <span>{L('decor.uploadImage')}</span>
+                  <button className={styles.uploadBtn} onClick={() => fileInputRef.current?.click()}>{L('decor.chooseFile')}</button>
+                  <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleWatermarkImageUpload} />
+                </div>
+              )}
+              <RangeField label={L('decor.opacity')} value={decoration.watermark.opacity} min={0.01} max={1} step={0.01} onChange={(v) => updateDecoration({ watermark: { ...decoration.watermark, opacity: v } } as any)} />
+              <RangeField label={L('decor.angle')} value={decoration.watermark.angle} min={-90} max={90} step={5} onChange={(v) => updateDecoration({ watermark: { ...decoration.watermark, angle: v } } as any)} unit="°" />
+              {decoration.watermark.type === 'text' && (
+                <RangeField label={L('decor.fontSize')} value={decoration.watermark.fontSize} min={10} max={40} step={1} onChange={(v) => updateDecoration({ watermark: { ...decoration.watermark, fontSize: v } } as any)} unit="px" />
+              )}
+              <RangeField label={L('decor.spacing')} value={decoration.watermark.spacing} min={20} max={300} step={10} onChange={(v) => updateDecoration({ watermark: { ...decoration.watermark, spacing: v } } as any)} unit="px" />
             </div>
           )}
-          <RangeField label={L('decor.opacity')} value={decoration.watermark.opacity} min={0.01} max={0.5} step={0.01} onChange={(v) => updateDecoration({ watermark: { ...decoration.watermark, opacity: v } } as any)} />
-          <RangeField label={L('decor.angle')} value={decoration.watermark.angle} min={-90} max={90} step={5} onChange={(v) => updateDecoration({ watermark: { ...decoration.watermark, angle: v } } as any)} unit="°" />
-          {decoration.watermark.type === 'text' && (
-            <RangeField label={L('decor.fontSize')} value={decoration.watermark.fontSize} min={10} max={40} step={1} onChange={(v) => updateDecoration({ watermark: { ...decoration.watermark, fontSize: v } } as any)} unit="px" />
-          )}
-          <RangeField label={L('decor.spacing')} value={decoration.watermark.spacing} min={20} max={300} step={10} onChange={(v) => updateDecoration({ watermark: { ...decoration.watermark, spacing: v } } as any)} unit="px" />
         </Section>
 
         <Section title={L('decor.logo')}>
           <Toggle label={L('decor.enable')} checked={decoration.logo.enabled} onChange={(v) => updateDecoration({ logo: { ...decoration.logo, enabled: v } } as any)} />
-          <div className={styles.uploadField}>
-            <span>{L('decor.uploadImage')}</span>
-            <button className={styles.uploadBtn} onClick={() => {
-              const input = document.createElement('input');
-              input.type = 'file'; input.accept = 'image/*';
-              input.onchange = (e) => {
-                const file = (e.target as HTMLInputElement).files?.[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (ev) => { updateDecoration({ logo: { ...decoration.logo, imageUrl: ev.target?.result as string, enabled: true } } as any); };
-                reader.readAsDataURL(file);
-              };
-              input.click();
-            }}>{L('decor.chooseFile')}</button>
-          </div>
-          {decoration.logo.imageUrl && <img src={decoration.logo.imageUrl} alt="logo" className={styles.logoPreview} />}
-          <SelectField label={L('decor.position')} value={decoration.logo.position} options={[
-            { value: 'top-left' as const, label: L('decor.topLeft') },
-            { value: 'top-right' as const, label: L('decor.topRight') },
-            { value: 'bottom-left' as const, label: L('decor.bottomLeft') },
-            { value: 'bottom-right' as const, label: L('decor.bottomRight') },
-          ]} onChange={(v) => updateDecoration({ logo: { ...decoration.logo, position: v } } as any)} />
-          <RangeField label={L('decor.size')} value={decoration.logo.size} min={50} max={200} step={5} onChange={(v) => updateDecoration({ logo: { ...decoration.logo, size: v } } as any)} unit="px" />
+          {decoration.logo.enabled && (
+            <div className={styles.sectionBody}>
+              <div className={styles.uploadField}>
+                <span>{L('decor.uploadImage')}</span>
+                <button className={styles.uploadBtn} onClick={() => logoInputRef.current?.click()}>{L('decor.chooseFile')}</button>
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => updateDecoration({ logo: { ...decoration.logo, imageUrl: ev.target?.result as string, enabled: true } } as any);
+                    reader.readAsDataURL(file);
+                  }}
+                />
+              </div>
+              {decoration.logo.imageUrl && <img src={decoration.logo.imageUrl} alt="logo" className={styles.logoPreview} />}
+              <SelectField label={L('decor.position')} value={decoration.logo.position} options={[
+                { value: 'top-left' as const, label: L('decor.topLeft') },
+                { value: 'top-right' as const, label: L('decor.topRight') },
+                { value: 'bottom-left' as const, label: L('decor.bottomLeft') },
+                { value: 'bottom-right' as const, label: L('decor.bottomRight') },
+              ]} onChange={(v) => updateDecoration({ logo: { ...decoration.logo, position: v } } as any)} />
+              <RangeField label={L('decor.size')} value={decoration.logo.size} min={50} max={200} step={5} onChange={(v) => updateDecoration({ logo: { ...decoration.logo, size: v } } as any)} unit="px" />
+            </div>
+          )}
         </Section>
 
         <Section title={L('decor.qrCode')}>
           <Toggle label={L('decor.enable')} checked={decoration.qrCode.enabled} onChange={(v) => updateDecoration({ qrCode: { ...decoration.qrCode, enabled: v } } as any)} />
-          <TextField label={L('decor.url')} value={decoration.qrCode.url} onChange={(v) => updateDecoration({ qrCode: { ...decoration.qrCode, url: v } } as any)} placeholder="https://..." />
-          <RangeField label={L('decor.size')} value={decoration.qrCode.size} min={60} max={160} step={10} onChange={(v) => updateDecoration({ qrCode: { ...decoration.qrCode, size: v } } as any)} unit="px" />
+          {decoration.qrCode.enabled && (
+            <div className={styles.sectionBody}>
+              <TextField label={L('decor.url')} value={decoration.qrCode.url} onChange={(v) => updateDecoration({ qrCode: { ...decoration.qrCode, url: v } } as any)} placeholder="https://..." />
+              <RangeField label={L('decor.size')} value={decoration.qrCode.size} min={60} max={200} step={10} onChange={(v) => updateDecoration({ qrCode: { ...decoration.qrCode, size: v } } as any)} unit="px" />
+            </div>
+          )}
         </Section>
 
         <Section title={L('decor.borderFrame')}>
           <Toggle label={L('decor.enable')} checked={decoration.borderFrame.enabled} onChange={(v) => updateDecoration({ borderFrame: { ...decoration.borderFrame, enabled: v } } as any)} />
-          <SelectField label={L('decor.frameStyle')} value={decoration.borderFrame.style} options={[
-            { value: 'simple' as const, label: L('decor.simple') },
-            { value: 'ornate' as const, label: L('decor.ornate') },
-            { value: 'geometric' as const, label: L('decor.geometric') },
-          ]} onChange={(v) => updateDecoration({ borderFrame: { ...decoration.borderFrame, style: v } } as any)} />
-          <RangeField label={L('decor.width')} value={decoration.borderFrame.width} min={1} max={6} step={1} onChange={(v) => updateDecoration({ borderFrame: { ...decoration.borderFrame, width: v } } as any)} unit="px" />
+          {decoration.borderFrame.enabled && (
+            <div className={styles.sectionBody}>
+              <SelectField label={L('decor.frameStyle')} value={decoration.borderFrame.style} options={[
+                { value: 'simple' as const, label: L('decor.simple') },
+                { value: 'ornate' as const, label: L('decor.ornate') },
+                { value: 'geometric' as const, label: L('decor.geometric') },
+              ]} onChange={(v) => updateDecoration({ borderFrame: { ...decoration.borderFrame, style: v } } as any)} />
+              <RangeField label={L('decor.width')} value={decoration.borderFrame.width} min={1} max={6} step={1} onChange={(v) => updateDecoration({ borderFrame: { ...decoration.borderFrame, width: v } } as any)} unit="px" />
+            </div>
+          )}
         </Section>
       </div>
     </div>

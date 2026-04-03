@@ -6,6 +6,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'toolbar.theme': '主题',
     'toolbar.style': '样式',
     'toolbar.decor': '装饰',
+    'toolbar.size': '尺寸',
     'toolbar.export': '导出',
     'toolbar.switchToDark': '切换到深色模式',
     'toolbar.switchToLight': '切换到浅色模式',
@@ -20,6 +21,14 @@ const translations: Record<Lang, Record<string, string>> = {
     // ThemePanel
     'theme.title': '主题',
     'theme.recommendFont': '推荐字体',
+    'theme.minimal-white': '极简白',
+    'theme.dark-night': '暗夜黑',
+    'theme.gradient-blue': '渐变蓝',
+    'theme.warm-orange': '暖阳橙',
+    'theme.academic': '学术风',
+    'theme.xiaohongshu': '小红书风',
+    'theme.forest-green': '森林绿',
+    'theme.lavender': '薰衣草',
 
     // StylePanel
     'style.title': '样式',
@@ -93,6 +102,7 @@ const translations: Record<Lang, Record<string, string>> = {
 
     // ExportPanel
     'export.title': '导出',
+    'export.sizeTitle': '尺寸模式',
     'export.sizeMode': '尺寸模式',
     'export.free': '自由',
     'export.freeDesc': '自定义尺寸',
@@ -118,6 +128,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'toolbar.theme': 'Theme',
     'toolbar.style': 'Style',
     'toolbar.decor': 'Decor',
+    'toolbar.size': 'Size',
     'toolbar.export': 'Export',
     'toolbar.switchToDark': 'Switch to Dark Mode',
     'toolbar.switchToLight': 'Switch to Light Mode',
@@ -132,6 +143,14 @@ const translations: Record<Lang, Record<string, string>> = {
     // ThemePanel
     'theme.title': 'Theme',
     'theme.recommendFont': 'Recommended',
+    'theme.minimal-white': 'Minimal White',
+    'theme.dark-night': 'Night Black',
+    'theme.gradient-blue': 'Gradient Blue',
+    'theme.warm-orange': 'Warm Orange',
+    'theme.academic': 'Academic',
+    'theme.xiaohongshu': 'Xiaohongshu',
+    'theme.forest-green': 'Forest Green',
+    'theme.lavender': 'Lavender',
 
     // StylePanel
     'style.title': 'Style',
@@ -203,6 +222,7 @@ const translations: Record<Lang, Record<string, string>> = {
 
     // ExportPanel
     'export.title': 'Export',
+    'export.sizeTitle': 'Size',
     'export.sizeMode': 'Size Mode',
     'export.free': 'Free',
     'export.freeDesc': 'Custom size',

@@ -1,13 +1,17 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../../stores/useStore';
-import { exportToPNG, exportToPDF, exportToHTML, downloadDataUrl, downloadHTML } from '../../utils/exportImage';
+import { exportToPNG, exportToPNGPages, exportToPDF, exportToHTML, downloadDataUrl, downloadDataUrls, downloadHTML } from '../../utils/exportImage';
 import { t } from '../../i18n';
 import styles from './ExportDialog.module.css';
-import type { ExportMode, ExportFormat } from '../../types';
+import type { ExportFormat, ExportMode } from '../../types';
+
+function isA4Mode(mode: ExportMode) {
+  return mode === 'a4-portrait' || mode === 'a4-landscape';
+}
 
 export default function ExportDialog() {
-  const { exportConfig, setExportConfig, setActivePanel, previewScale, language } = useStore();
+  const { exportConfig, setExportConfig, setActivePanel, language } = useStore();
   const [exporting, setExporting] = useState(false);
   const [overlayMounted, setOverlayMounted] = useState(false);
   const [overlayVisible, setOverlayVisible] = useState(false);
@@ -77,14 +81,6 @@ export default function ExportDialog() {
 
   const L = (key: string) => t(key, language);
 
-  const modes: { value: ExportMode; label: string; desc: string }[] = [
-    { value: 'free', label: L('export.free'), desc: L('export.freeDesc') },
-    { value: 'xiaohongshu', label: L('export.xiaohongshu'), desc: L('export.xiaohongshuDesc') },
-    { value: 'moments', label: L('export.moments'), desc: L('export.momentsDesc') },
-    { value: 'a4-portrait', label: L('export.a4Portrait'), desc: L('export.a4PortraitDesc') },
-    { value: 'a4-landscape', label: L('export.a4Landscape'), desc: L('export.a4LandscapeDesc') },
-  ];
-
   const formats: { value: ExportFormat; label: string }[] = [
     { value: 'png', label: 'PNG' },
     { value: 'pdf', label: 'PDF' },
@@ -117,7 +113,11 @@ export default function ExportDialog() {
     try {
       const exportWidth = getExportWidth();
       const exportPromise = exportConfig.format === 'png'
-        ? exportToPNG(el, exportConfig.scale, exportWidth).then(url => downloadDataUrl(url, 'markie-export.png'))
+        ? isA4Mode(exportConfig.mode)
+          ? exportToPNGPages(el, exportConfig.scale, exportWidth).then((urls) =>
+              downloadDataUrls(urls, (index) => `markie-export-page-${index + 1}.png`)
+            )
+          : exportToPNG(el, exportConfig.scale, exportWidth).then(url => downloadDataUrl(url, 'markie-export.png'))
         : exportConfig.format === 'pdf'
           ? exportToPDF(el, exportConfig.scale, exportWidth)
           : Promise.resolve(downloadHTML(exportToHTML(el), 'markie-export.html'));
@@ -138,28 +138,6 @@ export default function ExportDialog() {
         <button className={styles.closeBtn} onClick={() => setActivePanel('none')}>&times;</button>
       </div>
       <div className={styles.content}>
-        <Section title={L('export.sizeMode')}>
-          <div className={styles.modeGrid}>
-            {modes.map((m) => (
-              <button key={m.value} className={`${styles.modeCard} ${exportConfig.mode === m.value ? styles.active : ''}`} onClick={() => setExportConfig({ mode: m.value })}>
-                <span className={styles.modeLabel}>{m.label}</span>
-                <span className={styles.modeDesc}>{m.desc}</span>
-              </button>
-            ))}
-          </div>
-        </Section>
-
-        {exportConfig.mode === 'free' && (
-          <Section title={L('export.width')}>
-            <label className={styles.rangeField}>
-              <span>{exportConfig.width || 1080}px</span>
-              <input type="range" min={400} max={2000} step={10} value={exportConfig.width || 1080} onChange={(e) => {
-                setExportConfig({ width: Number(e.target.value) });
-              }} />
-            </label>
-          </Section>
-        )}
-
         <Section title={L('export.format')}>
           <div className={styles.formatRow}>
             {formats.map((f) => (
@@ -168,22 +146,6 @@ export default function ExportDialog() {
               </button>
             ))}
           </div>
-        </Section>
-
-        {exportConfig.format !== 'html' && (
-          <Section title={L('export.quality')}>
-            <label className={styles.rangeField}>
-              <span>{exportConfig.scale}x ({Math.round(exportConfig.scale * 100)}% 分辨率)</span>
-              <input type="range" min={1} max={4} step={0.5} value={exportConfig.scale} onChange={(e) => setExportConfig({ scale: Number(e.target.value) })} />
-            </label>
-          </Section>
-        )}
-
-        <Section title={L('export.previewScale')}>
-          <label className={styles.rangeField}>
-            <span>{Math.round(previewScale * 100)}%</span>
-            <input type="range" min={0.3} max={1} step={0.05} value={previewScale} onChange={(e) => useStore.getState().setPreviewScale(Number(e.target.value))} />
-          </label>
         </Section>
 
         <div className={styles.exportActions}>

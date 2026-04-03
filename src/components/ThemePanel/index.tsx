@@ -4,7 +4,8 @@ import { t } from '../../i18n';
 import styles from './ThemePanel.module.css';
 
 export default function ThemePanel() {
-  const { currentThemeId, setCurrentThemeId, setActivePanel, language } = useStore();
+  const { currentThemeId, setCurrentThemeId, setGlobalFont, setActivePanel, language } = useStore();
+  const getThemeLabel = (themeId: string) => t(`theme.${themeId}`, language);
 
   return (
     <div className={styles.panel}>
@@ -17,7 +18,12 @@ export default function ThemePanel() {
           <button
             key={theme.id}
             className={`${styles.themeCard} ${currentThemeId === theme.id ? styles.active : ''}`}
-            onClick={() => setCurrentThemeId(theme.id)}
+            onClick={() => {
+              setCurrentThemeId(theme.id);
+              if (theme.recommendFont) {
+                setGlobalFont(theme.recommendFont);
+              }
+            }}
           >
             <div
               className={styles.preview}
@@ -33,7 +39,7 @@ export default function ThemePanel() {
               </div>
             </div>
             <div className={styles.info}>
-              <span className={styles.name}>{theme.name}</span>
+              <span className={styles.name}>{getThemeLabel(theme.id)}</span>
               {theme.recommendFont && (
                 <span className={styles.font}>{theme.recommendFont}</span>
               )}

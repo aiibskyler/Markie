@@ -161,6 +161,135 @@ async function renderNative(element: HTMLElement, scale: number, fullWidth: numb
   return blob;
 }
 
+async function renderElementToBlob(
+  element: HTMLElement,
+  scale: number,
+  width: number,
+  height: number
+): Promise<Blob> {
+  const { clone, cleanup } = await cloneForRender(element, width, height);
+
+  try {
+    const computedBg = window.getComputedStyle(clone).backgroundColor;
+    const bgColor = computedBg && computedBg !== 'transparent' && computedBg !== 'rgba(0, 0, 0, 0)'
+      ? computedBg
+      : '#ffffff';
+
+    try {
+      return await renderNative(clone, scale, width, height);
+    } catch (err) {
+      console.warn('[export] modern-screenshot failed, falling back to html2canvas:', err);
+    }
+
+    if (!wouldExceedCanvasLimits(width, height, scale)) {
+      try {
+        const canvas = await html2canvas(clone, {
+          scale,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: bgColor,
+          logging: false,
+          width,
+          height,
+          windowWidth: width,
+          windowHeight: height,
+        });
+
+        return await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob(
+            (b) => b ? resolve(b) : reject(new Error('toBlob returned null')),
+            'image/png'
+          );
+        });
+      } catch (err) {
+        console.warn('[export] html2canvas failed:', err);
+      }
+    }
+
+    const superscale = scale * 2;
+    if (!wouldExceedCanvasLimits(width, height, superscale)) {
+      const canvas = await html2canvas(clone, {
+        scale: superscale,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: bgColor,
+        logging: false,
+        width,
+        height,
+        windowWidth: width,
+        windowHeight: height,
+      });
+
+      const targetW = width * scale;
+      const targetH = height * scale;
+      const out = document.createElement('canvas');
+      out.width = targetW;
+      out.height = targetH;
+      const ctx = out.getContext('2d')!;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(canvas, 0, 0, targetW, targetH);
+
+      return await new Promise<Blob>((resolve, reject) => {
+        out.toBlob(
+          (b) => b ? resolve(b) : reject(new Error('toBlob returned null')),
+          'image/png'
+        );
+      });
+    }
+
+    const maxChunkH = getMaxChunkHeight(width, scale);
+    const numChunks = Math.ceil(height / maxChunkH);
+    const chunks: HTMLCanvasElement[] = [];
+
+    for (let i = 0; i < numChunks; i++) {
+      const y = i * maxChunkH;
+      const chunkH = Math.min(maxChunkH, height - y);
+      const chunkCanvas = await renderChunk(clone, scale, y, chunkH, width, height, bgColor);
+      chunks.push(chunkCanvas);
+    }
+
+    const totalScaledWidth = width * scale;
+    const totalScaledHeight = height * scale;
+
+    if (totalScaledWidth > MAX_CANVAS_DIMENSION || totalScaledHeight > MAX_CANVAS_DIMENSION) {
+      const fitScale = Math.min(
+        MAX_CANVAS_DIMENSION / totalScaledWidth,
+        MAX_CANVAS_DIMENSION / totalScaledHeight,
+        1
+      );
+      const finalW = Math.floor(totalScaledWidth * fitScale);
+      const finalH = Math.floor(totalScaledHeight * fitScale);
+      const canvas = document.createElement('canvas');
+      canvas.width = finalW;
+      canvas.height = finalH;
+      const ctx = canvas.getContext('2d')!;
+      let currentY = 0;
+
+      for (const chunk of chunks) {
+        const drawH = chunk.height * fitScale;
+        ctx.drawImage(chunk, 0, currentY, finalW, drawH);
+        currentY += drawH;
+      }
+
+      return await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (b) => b ? resolve(b) : reject(new Error('toBlob returned null')),
+          'image/png'
+        );
+      });
+    }
+
+    return stitchCanvasChunks(chunks, totalScaledWidth, totalScaledHeight);
+  } finally {
+    cleanup();
+  }
+}
+
+function getPageNodes(element: HTMLElement): HTMLElement[] {
+  return Array.from(element.querySelectorAll<HTMLElement>('[data-export-page="markie-page"]'));
+}
+
 /**
  * Export an element to PNG.
  */
@@ -179,166 +308,33 @@ export async function exportToPNG(
   console.log('[export] element offsetWidth:', element.offsetWidth, 'offsetHeight:', element.offsetHeight);
   console.log('[export] element getBoundingClientRect:', element.getBoundingClientRect());
 
-  const { clone, cleanup } = await cloneForRender(element, fullWidth, fullHeight);
+  const blob = await renderElementToBlob(element, scale, fullWidth, fullHeight);
+  const blobUrl = URL.createObjectURL(blob);
+  console.log('[export] blob size:', blob.size);
+  return blobUrl;
+}
 
-  console.log('[export] clone dimensions after render:', clone.offsetWidth, 'x', clone.offsetHeight);
-  console.log('[export] clone scrollHeight:', clone.scrollHeight);
+export async function exportToPNGPages(
+  element: HTMLElement,
+  scale = 2,
+  width?: number
+): Promise<string[]> {
+  await document.fonts.ready;
 
-  // Force layout recalculation so the clone has correct dimensions
-  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  clone.offsetHeight;
-
-  try {
-    // Get background color
-    const computedBg = window.getComputedStyle(clone).backgroundColor;
-    const bgColor = computedBg && computedBg !== 'transparent' && computedBg !== 'rgba(0, 0, 0, 0)'
-      ? computedBg
-      : '#ffffff';
-
-    // Primary: modern-screenshot (native CSS rendering — handles gradients & variables)
-    try {
-      const blob = await renderNative(clone, scale, fullWidth, fullHeight);
-      const blobUrl = URL.createObjectURL(blob);
-      console.log('[export] modern-screenshot blob size:', blob.size);
-      return blobUrl;
-    } catch (err) {
-      console.warn('[export] modern-screenshot failed, falling back to html2canvas:', err);
-    }
-
-    // Fallback: html2canvas
-    if (!wouldExceedCanvasLimits(fullWidth, fullHeight, scale)) {
-      console.log('[export] Using html2canvas');
-      try {
-        const canvas = await html2canvas(clone, {
-          scale,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: bgColor,
-          logging: false,
-          width: fullWidth,
-          height: fullHeight,
-          windowWidth: fullWidth,
-          windowHeight: fullHeight,
-        });
-
-        const blob = await new Promise<Blob>((resolve, reject) => {
-          canvas.toBlob(
-            (b) => b ? resolve(b) : reject(new Error('toBlob returned null')),
-            'image/png'
-          );
-        });
-
-        const blobUrl = URL.createObjectURL(blob);
-        console.log('[export] blob size:', blob.size);
-        return blobUrl;
-      } catch (err) {
-        console.warn('[export] html2canvas failed:', err);
-      }
-    }
-
-    // Fallback 1: html2canvas with supersampling
-    const superscale = scale * 2;
-    if (!wouldExceedCanvasLimits(fullWidth, fullHeight, superscale)) {
-      console.log('[export] Using html2canvas supersampled fallback');
-
-      // Get background color
-      const computedBg = window.getComputedStyle(clone).backgroundColor;
-      const bgColor = computedBg && computedBg !== 'transparent' && computedBg !== 'rgba(0, 0, 0, 0)'
-        ? computedBg
-        : '#ffffff';
-
-      const canvas = await html2canvas(clone, {
-        scale: superscale,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: bgColor,
-        logging: false,
-        width: fullWidth,
-        height: fullHeight,
-        windowWidth: fullWidth,
-        windowHeight: fullHeight,
-      });
-
-      const targetW = fullWidth * scale;
-      const targetH = fullHeight * scale;
-      const out = document.createElement('canvas');
-      out.width = targetW;
-      out.height = targetH;
-      const ctx = out.getContext('2d')!;
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(canvas, 0, 0, targetW, targetH);
-
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        out.toBlob(
-          (b) => b ? resolve(b) : reject(new Error('toBlob returned null')),
-          'image/png'
-        );
-      });
-
-      const blobUrl = URL.createObjectURL(blob);
-      console.log('[export] blob size:', blob.size);
-      return blobUrl;
-    }
-
-    // Fallback 2: chunked html2canvas for very large elements
-    console.log('[export] Using chunked html2canvas');
-    const maxChunkH = getMaxChunkHeight(fullWidth, scale);
-    const numChunks = Math.ceil(fullHeight / maxChunkH);
-
-    // Get background color for chunks
-    const chunkBg = window.getComputedStyle(clone).backgroundColor;
-    const chunkBgColor = chunkBg && chunkBg !== 'transparent' && chunkBg !== 'rgba(0, 0, 0, 0)'
-      ? chunkBg
-      : '#ffffff';
-
-    const chunks: HTMLCanvasElement[] = [];
-    for (let i = 0; i < numChunks; i++) {
-      const y = i * maxChunkH;
-      const chunkH = Math.min(maxChunkH, fullHeight - y);
-      const chunkCanvas = await renderChunk(clone, scale, y, chunkH, fullWidth, fullHeight, chunkBgColor);
-      chunks.push(chunkCanvas);
-    }
-
-    const totalScaledWidth = fullWidth * scale;
-    const totalScaledHeight = fullHeight * scale;
-
-    let finalBlob: Blob;
-    if (totalScaledWidth > MAX_CANVAS_DIMENSION || totalScaledHeight > MAX_CANVAS_DIMENSION) {
-      const fitScale = Math.min(
-        MAX_CANVAS_DIMENSION / totalScaledWidth,
-        MAX_CANVAS_DIMENSION / totalScaledHeight,
-        1
-      );
-      const finalW = Math.floor(totalScaledWidth * fitScale);
-      const finalH = Math.floor(totalScaledHeight * fitScale);
-
-      const canvas = document.createElement('canvas');
-      canvas.width = finalW;
-      canvas.height = finalH;
-      const ctx = canvas.getContext('2d')!;
-      let currentY = 0;
-      for (const chunk of chunks) {
-        const drawH = chunk.height * fitScale;
-        ctx.drawImage(chunk, 0, currentY, finalW, drawH);
-        currentY += drawH;
-      }
-      finalBlob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob(
-          (b) => b ? resolve(b) : reject(new Error('toBlob returned null')),
-          'image/png'
-        );
-      });
-    } else {
-      finalBlob = await stitchCanvasChunks(chunks, totalScaledWidth, totalScaledHeight);
-    }
-
-    const blobUrl = URL.createObjectURL(finalBlob);
-    console.log('[export] blob size:', finalBlob.size);
-    return blobUrl;
-  } finally {
-    cleanup();
+  const pageNodes = getPageNodes(element);
+  if (pageNodes.length === 0) {
+    return [await exportToPNG(element, scale, width)];
   }
+
+  const urls: string[] = [];
+  for (const pageEl of pageNodes) {
+    const pageWidth = width || pageEl.scrollWidth;
+    const pageHeight = pageEl.scrollHeight;
+    const blob = await renderElementToBlob(pageEl, scale, pageWidth, pageHeight);
+    urls.push(URL.createObjectURL(blob));
+  }
+
+  return urls;
 }
 
 /**
@@ -350,6 +346,71 @@ export async function exportToPDF(
   width?: number
 ): Promise<void> {
   await document.fonts.ready;
+
+  const pageNodes = getPageNodes(element);
+
+  if (pageNodes.length > 0) {
+    const renderedPages: Array<{ dataUrl: string; width: number; height: number }> = [];
+
+    for (const pageEl of pageNodes) {
+      const pageWidth = width || pageEl.scrollWidth;
+      const pageHeight = pageEl.scrollHeight;
+      const { clone, cleanup } = await cloneForRender(pageEl, pageWidth, pageHeight);
+
+      try {
+        try {
+          const blob = await renderNative(clone, scale, pageWidth, pageHeight);
+          renderedPages.push({
+            dataUrl: await blobToDataUrl(blob),
+            width: pageWidth,
+            height: pageHeight,
+          });
+        } catch {
+          const pdfBg = window.getComputedStyle(clone).backgroundColor;
+          const pdfBgColor = pdfBg && pdfBg !== 'transparent' && pdfBg !== 'rgba(0, 0, 0, 0)'
+            ? pdfBg
+            : '#ffffff';
+
+          const canvas = await html2canvas(clone, {
+            scale,
+            useCORS: true,
+            allowTaint: true,
+            backgroundColor: pdfBgColor,
+            logging: false,
+            width: pageWidth,
+            height: pageHeight,
+            windowWidth: pageWidth,
+            windowHeight: pageHeight,
+          });
+
+          renderedPages.push({
+            dataUrl: canvas.toDataURL('image/png'),
+            width: canvas.width / scale,
+            height: canvas.height / scale,
+          });
+        }
+      } finally {
+        cleanup();
+      }
+    }
+
+    const firstPage = renderedPages[0];
+    const pdf = new jsPDF({
+      orientation: firstPage.width > firstPage.height ? 'landscape' : 'portrait',
+      unit: 'px',
+      format: [firstPage.width, firstPage.height],
+    });
+
+    renderedPages.forEach((page, index) => {
+      if (index > 0) {
+        pdf.addPage([page.width, page.height], page.width > page.height ? 'landscape' : 'portrait');
+      }
+      pdf.addImage(page.dataUrl, 'PNG', 0, 0, page.width, page.height);
+    });
+
+    pdf.save('markie-export.pdf');
+    return;
+  }
 
   const fullWidth = width || element.scrollWidth;
   const fullHeight = element.scrollHeight;
@@ -416,6 +477,18 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 export function exportToHTML(element: HTMLElement): string {
   const clone = element.cloneNode(true) as HTMLElement;
   clone.style.transform = 'none';
+  clone.style.width = 'auto';
+  clone.style.maxWidth = 'none';
+  clone.style.margin = '0 auto';
+
+  const pageNodes = Array.from(clone.querySelectorAll<HTMLElement>('[data-export-page="markie-page"]'));
+  if (pageNodes.length > 0) {
+    clone.style.display = 'flex';
+    clone.style.flexDirection = 'column';
+    clone.style.alignItems = 'center';
+    clone.style.gap = '28px';
+    clone.style.padding = '32px 0';
+  }
 
   const styleEls = document.querySelectorAll('style');
   let styleText = '';
@@ -423,15 +496,39 @@ export function exportToHTML(element: HTMLElement): string {
     if (s.textContent) styleText += s.textContent + '\n';
   });
 
+  const exportLayoutOverrides = `
+html, body {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 100% !important;
+  overflow: auto !important;
+}
+
+body {
+  margin: 0 !important;
+  padding: 24px !important;
+  background: #f0f0f0 !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  justify-content: center !important;
+}
+
+#root {
+  width: auto !important;
+  height: auto !important;
+  overflow: visible !important;
+}
+`;
+
   const html = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Markie Export</title>
-  <style>${styleText}</style>
+  <style>${styleText}\n${exportLayoutOverrides}</style>
 </head>
-<body style="margin:0;padding:0;display:flex;justify-content:center;background:#f0f0f0;">
+<body>
   ${clone.outerHTML}
 </body>
 </html>`;
@@ -450,6 +547,14 @@ export function downloadDataUrl(dataUrl: string, filename: string) {
   if (dataUrl.startsWith('blob:')) {
     setTimeout(() => URL.revokeObjectURL(dataUrl), 1000);
   }
+}
+
+export function downloadDataUrls(dataUrls: string[], getFilename: (index: number) => string) {
+  dataUrls.forEach((dataUrl, index) => {
+    window.setTimeout(() => {
+      downloadDataUrl(dataUrl, getFilename(index));
+    }, index * 200);
+  });
 }
 
 export function downloadHTML(html: string, filename: string) {

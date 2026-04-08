@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../../stores/useStore';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { exportToPNG, exportToPNGPages, exportToPDF, exportToHTML, downloadDataUrl, downloadDataUrls, downloadHTML } from '../../utils/exportImage';
 import { t } from '../../i18n';
 import styles from './ExportDialog.module.css';
@@ -12,6 +13,7 @@ function isA4Mode(mode: ExportMode) {
 
 export default function ExportDialog() {
   const { exportConfig, setExportConfig, setActivePanel, language } = useStore();
+  const isMobile = useIsMobile();
   const [exporting, setExporting] = useState(false);
   const [overlayMounted, setOverlayMounted] = useState(false);
   const [overlayVisible, setOverlayVisible] = useState(false);
@@ -33,6 +35,13 @@ export default function ExportDialog() {
   // Overlay enter/exit + auto-scroll
   useEffect(() => {
     let rafId: number;
+
+    if (isMobile) {
+      setOverlayMounted(false);
+      setOverlayVisible(false);
+      scrollResolveRef.current();
+      return () => undefined;
+    }
 
     if (exporting) {
       setOverlayMounted(true);
@@ -77,7 +86,7 @@ export default function ExportDialog() {
       // Safety: resolve if animation was cancelled before reaching bottom
       scrollResolveRef.current();
     };
-  }, [exporting]);
+  }, [exporting, isMobile]);
 
   const L = (key: string) => t(key, language);
 
@@ -155,7 +164,7 @@ export default function ExportDialog() {
         </div>
       </div>
 
-      {overlayMounted && createPortal(
+      {!isMobile && overlayMounted && createPortal(
         <div ref={overlayRef} className={`${styles.overlay} ${overlayVisible ? styles.overlayActive : ''}`}>
           <div
             className={styles.overlayContentWrap}

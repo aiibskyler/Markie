@@ -159,7 +159,11 @@ function Section({ title, expanded, onToggle, children }: { title: string; expan
     <div className={styles.section}>
       <button type="button" className={styles.sectionHeader} onClick={onToggle}>
         <span className={styles.sectionTitle}>{title}</span>
-        <span className={`${styles.sectionChevron} ${expanded ? styles.sectionChevronOpen : ''}`}>⌄</span>
+        <span className={`${styles.sectionChevron} ${expanded ? styles.sectionChevronOpen : ''}`}>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </span>
       </button>
       {expanded && <div className={styles.sectionBody}>{children}</div>}
     </div>

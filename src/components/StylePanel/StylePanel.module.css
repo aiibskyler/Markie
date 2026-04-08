@@ -91,9 +91,21 @@
 }
 
 .sectionChevron {
-  color: var(--app-text-muted);
-  font-size: 14px;
-  transition: transform 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--app-text-dimmed);
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--app-surface);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s ease, background 0.2s ease;
+  flex-shrink: 0;
+}
+
+.sectionHeader:hover .sectionChevron {
+  color: var(--app-accent-text);
+  background: var(--app-accent-soft);
 }
 
 .sectionChevronOpen {

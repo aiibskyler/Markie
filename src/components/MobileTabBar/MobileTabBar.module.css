@@ -1,0 +1,38 @@
+.tabBar {
+  display: flex;
+  align-items: center;
+  height: 42px;
+  background: var(--app-toolbar-bg);
+  border-bottom: 1px solid var(--app-border);
+  flex-shrink: 0;
+  padding: 0 12px;
+  gap: 4px;
+  backdrop-filter: blur(18px);
+}
+
+.tab {
+  flex: 1;
+  height: 30px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.tabActive {
+  background: var(--app-accent-soft);
+  border-color: var(--app-accent-border);
+  color: var(--app-accent-text);
+}
+
+.tabIcon {
+  font-size: 14px;
+}

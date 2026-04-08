@@ -163,6 +163,7 @@ export interface DecorationConfig {
 // Export types
 export type ExportMode = 'free' | 'xiaohongshu' | 'moments' | 'a4-portrait' | 'a4-landscape';
 export type ExportFormat = 'png' | 'pdf' | 'html';
+export type MobileTab = 'editor' | 'preview';
 
 export interface ExportConfig {
   mode: ExportMode;
@@ -227,4 +228,8 @@ export interface AppState {
   // UI state
   activePanel: 'none' | 'size' | 'style' | 'decor' | 'export';
   setActivePanel: (panel: 'none' | 'size' | 'style' | 'decor' | 'export') => void;
+
+  // Mobile
+  mobileTab: MobileTab;
+  setMobileTab: (tab: MobileTab) => void;
 }

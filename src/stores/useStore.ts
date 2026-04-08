@@ -4,6 +4,7 @@ import type {
   ElementStyles,
   DecorationConfig,
   ExportConfig,
+  MobileTab,
 } from '../types';
 
 const defaultElementStyles: ElementStyles = {
@@ -187,4 +188,7 @@ export const useStore = create<AppState>((set) => ({
 
   activePanel: 'none',
   setActivePanel: (panel) => set({ activePanel: panel }),
+
+  mobileTab: 'preview' as MobileTab,
+  setMobileTab: (tab) => set({ mobileTab: tab }),
 }));

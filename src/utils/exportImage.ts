@@ -5,6 +5,13 @@ import jsPDF from 'jspdf';
 const MAX_CANVAS_DIMENSION = 16384;
 const MAX_CANVAS_AREA = 16384 * 16384;
 
+function getComputedBackgroundColor(element: HTMLElement, fallback: string | null = '#ffffff') {
+  const computedBg = window.getComputedStyle(element).backgroundColor;
+  return computedBg && computedBg !== 'transparent' && computedBg !== 'rgba(0, 0, 0, 0)'
+    ? computedBg
+    : fallback;
+}
+
 function wouldExceedCanvasLimits(width: number, height: number, scale: number): boolean {
   const scaledW = width * scale;
   const scaledH = height * scale;
@@ -30,7 +37,7 @@ async function renderChunk(
   chunkHeight: number,
   fullWidth: number,
   fullHeight: number,
-  bgColor: string
+  bgColor: string | null
 ): Promise<HTMLCanvasElement> {
   return html2canvas(element, {
     scale,
@@ -80,11 +87,7 @@ function stitchCanvasChunks(
 async function cloneForRender(element: HTMLElement, fullWidth: number, fullHeight: number): Promise<{ clone: HTMLElement; cleanup: () => void }> {
   const clone = element.cloneNode(true) as HTMLElement;
 
-  // Get computed background color from the original element
-  const computedBg = window.getComputedStyle(element).backgroundColor;
-  const bgColor = computedBg && computedBg !== 'transparent' && computedBg !== 'rgba(0, 0, 0, 0)'
-    ? computedBg
-    : '#ffffff';
+  const bgColor = getComputedBackgroundColor(element, null);
 
   const wrapper = document.createElement('div');
   wrapper.style.cssText = `
@@ -95,7 +98,7 @@ async function cloneForRender(element: HTMLElement, fullWidth: number, fullHeigh
     pointer-events: none;
     width: ${fullWidth}px;
     height: ${fullHeight}px;
-    background: ${bgColor};
+    background: ${bgColor ?? 'transparent'};
     overflow: hidden;
   `;
 
@@ -145,17 +148,13 @@ async function cloneForRender(element: HTMLElement, fullWidth: number, fullHeigh
  * HTML engine with full hinting & antialiasing, not re-drawn by Canvas fillText.
  */
 async function renderNative(element: HTMLElement, scale: number, fullWidth: number, fullHeight: number): Promise<Blob> {
-  // Get background color from element or default to white
-  const computedBg = window.getComputedStyle(element).backgroundColor;
-  const bgColor = computedBg && computedBg !== 'transparent' && computedBg !== 'rgba(0, 0, 0, 0)'
-    ? computedBg
-    : '#ffffff';
+  const bgColor = getComputedBackgroundColor(element, null);
 
   const blob = await domToBlob(element, {
     scale,
     width: fullWidth,
     height: fullHeight,
-    backgroundColor: bgColor,
+    ...(bgColor ? { backgroundColor: bgColor } : {}),
   });
   if (!blob) throw new Error('modern-screenshot returned null');
   return blob;
@@ -170,10 +169,7 @@ async function renderElementToBlob(
   const { clone, cleanup } = await cloneForRender(element, width, height);
 
   try {
-    const computedBg = window.getComputedStyle(clone).backgroundColor;
-    const bgColor = computedBg && computedBg !== 'transparent' && computedBg !== 'rgba(0, 0, 0, 0)'
-      ? computedBg
-      : '#ffffff';
+    const bgColor = getComputedBackgroundColor(clone, null);
 
     try {
       return await renderNative(clone, scale, width, height);
@@ -366,10 +362,7 @@ export async function exportToPDF(
             height: pageHeight,
           });
         } catch {
-          const pdfBg = window.getComputedStyle(clone).backgroundColor;
-          const pdfBgColor = pdfBg && pdfBg !== 'transparent' && pdfBg !== 'rgba(0, 0, 0, 0)'
-            ? pdfBg
-            : '#ffffff';
+          const pdfBgColor = getComputedBackgroundColor(clone, '#ffffff');
 
           const canvas = await html2canvas(clone, {
             scale,
@@ -430,10 +423,7 @@ export async function exportToPDF(
       imgHeight = fullHeight * scale;
     } catch {
       // Fallback to html2canvas
-      const pdfBg = window.getComputedStyle(clone).backgroundColor;
-      const pdfBgColor = pdfBg && pdfBg !== 'transparent' && pdfBg !== 'rgba(0, 0, 0, 0)'
-        ? pdfBg
-        : '#ffffff';
+      const pdfBgColor = getComputedBackgroundColor(clone, '#ffffff');
 
       const canvas = await html2canvas(clone, {
         scale,

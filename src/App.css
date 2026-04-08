@@ -105,6 +105,10 @@ body {
   min-height: 0;
 }
 
+.mainMobile {
+  flex-direction: column;
+}
+
 /* KaTeX */
 .katex {
   font-size: 1.1em;

@@ -60,3 +60,15 @@
 .textarea::-webkit-scrollbar-thumb:hover {
   background: var(--app-scrollbar-hover);
 }
+
+/* ====== Mobile Responsive ====== */
+@media (max-width: 1023px) {
+  .header {
+    display: none;
+  }
+
+  .textarea {
+    padding: 16px;
+    font-size: 15px;
+  }
+}

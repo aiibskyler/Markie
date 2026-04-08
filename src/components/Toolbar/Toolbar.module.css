@@ -156,3 +156,62 @@
   background: var(--app-hover);
   transform: translateY(-1px);
 }
+
+/* ====== Mobile Responsive ====== */
+@media (max-width: 1023px) {
+  .toolbar {
+    height: 48px;
+    padding: 0 10px;
+  }
+
+  .brand {
+    margin-right: 12px;
+  }
+
+  .logo {
+    height: 26px;
+  }
+
+  .buttons {
+    gap: 2px;
+    padding: 2px;
+    border-radius: 10px;
+  }
+
+  .btn {
+    height: 32px;
+    padding: 0 10px;
+    gap: 4px;
+  }
+
+  .btnLabel {
+    display: none;
+  }
+
+  .btnIcon {
+    font-size: 17px;
+  }
+
+  .right {
+    gap: 6px;
+  }
+
+  .langBtn {
+    height: 30px;
+    min-width: 34px;
+    padding: 0 8px;
+    font-size: 11px;
+  }
+
+  .themeToggle {
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+  }
+
+  .github {
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+  }
+}

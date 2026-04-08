@@ -210,3 +210,17 @@
 .uploadBtn:hover {
   background: var(--app-accent-border);
 }
+
+/* ====== Mobile Responsive ====== */
+@media (max-width: 1023px) {
+  .panel {
+    width: 100%;
+    height: auto;
+    border-right: none;
+    box-shadow: none;
+  }
+
+  .content {
+    max-height: calc(70vh - 60px);
+  }
+}

@@ -239,3 +239,14 @@
 .scrollContainer::-webkit-scrollbar-thumb:hover {
   background: var(--app-scrollbar-hover);
 }
+
+/* ====== Mobile Responsive ====== */
+@media (max-width: 1023px) {
+  .header {
+    display: none;
+  }
+
+  .scrollContainer {
+    padding: 16px;
+  }
+}

@@ -28,7 +28,6 @@ export default function ExportDialog() {
     if (overlayContentRef.current && exportClone) {
       overlayContentRef.current.innerHTML = '';
       overlayContentRef.current.appendChild(exportClone);
-      console.log('[ExportDialog] Clone inserted, dimensions:', exportClone.offsetWidth, 'x', exportClone.offsetHeight);
     }
   }, [exportClone, overlayMounted]);
 

@@ -299,15 +299,8 @@ export async function exportToPNG(
   const fullWidth = width || element.scrollWidth;
   const fullHeight = element.scrollHeight;
 
-  console.log('[export] fullWidth:', fullWidth, 'fullHeight:', fullHeight, 'scale:', scale);
-  console.log('[export] element scrollWidth:', element.scrollWidth, 'scrollHeight:', element.scrollHeight);
-  console.log('[export] element offsetWidth:', element.offsetWidth, 'offsetHeight:', element.offsetHeight);
-  console.log('[export] element getBoundingClientRect:', element.getBoundingClientRect());
-
   const blob = await renderElementToBlob(element, scale, fullWidth, fullHeight);
-  const blobUrl = URL.createObjectURL(blob);
-  console.log('[export] blob size:', blob.size);
-  return blobUrl;
+  return URL.createObjectURL(blob);
 }
 
 export async function exportToPNGPages(
@@ -334,6 +327,12 @@ export async function exportToPNGPages(
 }
 
 /**
+ * jsPDF max page dimension is 14400pt. With unit='px', jsPDF converts 1px = 96/72 pt.
+ * Safe CSS pixel limit: 14400 * 72/96 = 10800px. Use slightly less to avoid floating-point edge cases.
+ */
+const MAX_PDF_PAGE = 10790;
+
+/**
  * Export an element to PDF.
  */
 export async function exportToPDF(
@@ -344,115 +343,28 @@ export async function exportToPDF(
   await document.fonts.ready;
 
   const pageNodes = getPageNodes(element);
+  let pages: Array<{ dataUrl: string; width: number; height: number }> = [];
 
   if (pageNodes.length > 0) {
-    const renderedPages: Array<{ dataUrl: string; width: number; height: number }> = [];
-
     for (const pageEl of pageNodes) {
-      const pageWidth = width || pageEl.scrollWidth;
-      const pageHeight = pageEl.scrollHeight;
-      const { clone, cleanup } = await cloneForRender(pageEl, pageWidth, pageHeight);
-
-      try {
-        try {
-          const blob = await renderNative(clone, scale, pageWidth, pageHeight);
-          renderedPages.push({
-            dataUrl: await blobToDataUrl(blob),
-            width: pageWidth,
-            height: pageHeight,
-          });
-        } catch {
-          const pdfBgColor = getComputedBackgroundColor(clone, '#ffffff');
-
-          const canvas = await html2canvas(clone, {
-            scale,
-            useCORS: true,
-            allowTaint: true,
-            backgroundColor: pdfBgColor,
-            logging: false,
-            width: pageWidth,
-            height: pageHeight,
-            windowWidth: pageWidth,
-            windowHeight: pageHeight,
-          });
-
-          renderedPages.push({
-            dataUrl: canvas.toDataURL('image/png'),
-            width: canvas.width / scale,
-            height: canvas.height / scale,
-          });
-        }
-      } finally {
-        cleanup();
-      }
+      const pw = width || pageEl.scrollWidth;
+      const ph = pageEl.scrollHeight;
+      const blob = await renderElementToBlob(pageEl, scale, pw, ph);
+      pages.push({ dataUrl: await blobToDataUrl(blob), width: pw, height: ph });
     }
+  } else {
+    const fw = width || element.scrollWidth;
+    const fh = element.scrollHeight;
+    const blob = await renderElementToBlob(element, scale, fw, fh);
 
-    const firstPage = renderedPages[0];
-    const pdf = new jsPDF({
-      orientation: firstPage.width > firstPage.height ? 'landscape' : 'portrait',
-      unit: 'px',
-      format: [firstPage.width, firstPage.height],
-    });
-
-    renderedPages.forEach((page, index) => {
-      if (index > 0) {
-        pdf.addPage([page.width, page.height], page.width > page.height ? 'landscape' : 'portrait');
-      }
-      pdf.addImage(page.dataUrl, 'PNG', 0, 0, page.width, page.height);
-    });
-
-    pdf.save('markie-export.pdf');
-    return;
+    if (fh > MAX_PDF_PAGE) {
+      pages = await splitBlobToPages(blob, fw, fh, scale);
+    } else {
+      pages.push({ dataUrl: await blobToDataUrl(blob), width: fw, height: fh });
+    }
   }
 
-  const fullWidth = width || element.scrollWidth;
-  const fullHeight = element.scrollHeight;
-
-  const { clone, cleanup } = await cloneForRender(element, fullWidth, fullHeight);
-
-  try {
-    let imgDataUrl: string;
-    let imgWidth: number;
-    let imgHeight: number;
-
-    // Try modern-screenshot first
-    try {
-      const blob = await renderNative(clone, scale, fullWidth, fullHeight);
-      imgDataUrl = await blobToDataUrl(blob);
-      imgWidth = fullWidth * scale;
-      imgHeight = fullHeight * scale;
-    } catch {
-      // Fallback to html2canvas
-      const pdfBgColor = getComputedBackgroundColor(clone, '#ffffff');
-
-      const canvas = await html2canvas(clone, {
-        scale,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: pdfBgColor,
-        logging: false,
-        width: fullWidth,
-        height: fullHeight,
-        windowWidth: fullWidth,
-        windowHeight: fullHeight,
-      });
-      imgDataUrl = canvas.toDataURL('image/png');
-      imgWidth = canvas.width;
-      imgHeight = canvas.height;
-    }
-
-    const isLandscape = imgWidth > imgHeight;
-    const pdf = new jsPDF({
-      orientation: isLandscape ? 'landscape' : 'portrait',
-      unit: 'px',
-      format: [imgWidth / scale, imgHeight / scale],
-    });
-
-    pdf.addImage(imgDataUrl, 'PNG', 0, 0, imgWidth / scale, imgHeight / scale);
-    pdf.save('markie-export.pdf');
-  } finally {
-    cleanup();
-  }
+  buildPDF(pages);
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {
@@ -462,6 +374,74 @@ function blobToDataUrl(blob: Blob): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+}
+
+function blobToImage(blob: Blob): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(img.src);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(img.src);
+      reject(new Error('Failed to load rendered image'));
+    };
+    img.src = URL.createObjectURL(blob);
+  });
+}
+
+async function splitBlobToPages(
+  blob: Blob,
+  cssWidth: number,
+  cssHeight: number,
+  scale: number
+): Promise<Array<{ dataUrl: string; width: number; height: number }>> {
+  const img = await blobToImage(blob);
+  const numPages = Math.ceil(cssHeight / MAX_PDF_PAGE);
+  const pages: Array<{ dataUrl: string; width: number; height: number }> = [];
+
+  for (let i = 0; i < numPages; i++) {
+    const yCss = i * MAX_PDF_PAGE;
+    const pageCssHeight = Math.min(MAX_PDF_PAGE, cssHeight - yCss);
+
+    const sx = 0;
+    const sy = Math.round(yCss * scale);
+    const sw = Math.round(cssWidth * scale);
+    const sh = Math.round(pageCssHeight * scale);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = sw;
+    canvas.height = sh;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+
+    pages.push({
+      dataUrl: canvas.toDataURL('image/png'),
+      width: cssWidth,
+      height: pageCssHeight,
+    });
+  }
+
+  return pages;
+}
+
+function buildPDF(pages: Array<{ dataUrl: string; width: number; height: number }>): void {
+  if (pages.length === 0) return;
+  const first = pages[0];
+  const pdf = new jsPDF({
+    orientation: first.width > first.height ? 'landscape' : 'portrait',
+    unit: 'px',
+    format: [first.width, first.height],
+  });
+  pdf.setProperties({ title: 'Markie Export', creator: 'Markie' });
+  pages.forEach((page, i) => {
+    if (i > 0) {
+      pdf.addPage([page.width, page.height], page.width > page.height ? 'landscape' : 'portrait');
+    }
+    pdf.addImage(page.dataUrl, 'PNG', 0, 0, page.width, page.height);
+  });
+  pdf.save('markie-export.pdf');
 }
 
 export function exportToHTML(element: HTMLElement): string {

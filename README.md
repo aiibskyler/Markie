@@ -38,7 +38,6 @@ Markie 基于 React + TypeScript + Vite 构建，提供实时编辑和实时预�
 - KaTeX
 - html2canvas
 - modern-screenshot
-- jsPDF
 
 ### 快速开始
 
@@ -77,9 +76,12 @@ npm run preview
 
 - `PNG`
   - 普通模式下导出单张图片
+  - 选择 PNG 导出时，内容超长会自动切分为多张图片下载（与尺寸模式无关，每张保持原始清晰度，单张不超过浏览器画布上限）
   - A4 分页模式下会按页分别下载多个 PNG 文件
 - `PDF`
-  - A4 模式下按页生成多页 PDF
+  - 通过浏览器打印导出**文字型 PDF**（文字可选中、可搜索、矢量字体任意缩放清晰）
+  - 点击导出后会在打印面板中选择“另存为 PDF”，文件名默认为文章标题
+  - 主题、字体、水印、二维码等样式与预览一致（打印时保留背景色）
 - `HTML`
   - 导出完整页面，可在浏览器中打开和滚动查看
 
@@ -164,7 +166,6 @@ Markie is built with React + TypeScript + Vite. It provides live editing and liv
 - KaTeX
 - html2canvas
 - modern-screenshot
-- jsPDF
 
 ### Getting Started
 
@@ -203,9 +204,10 @@ npm run preview
 
 - `PNG`
   - Exports a single image in normal modes
+  - When PNG is chosen, content that is too long is automatically split into multiple images for download (regardless of size mode), each at full resolution and no larger than the browser canvas limit
   - Downloads multiple files page by page in A4 paginated modes
 - `PDF`
-  - Generates a multi-page PDF in A4 modes
+  - Exports a real text PDF via the browser print dialog (selectable and searchable text, vector fonts stay sharp at any zoom)
 - `HTML`
   - Exports a complete standalone page that can be opened and scrolled in a browser
 

@@ -246,29 +246,44 @@
   cursor: not-allowed;
 }
 
-/* ====== Export Overlay ====== */
+/* ====== Export Progress ====== */
 
-.overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 10000;
+.progressWrap {
+  margin-top: 14px;
   display: flex;
-  justify-content: center;
-  overflow: auto;
-  background: transparent;
-  pointer-events: none;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.overlayActive {
-  background: rgba(0, 0, 0, 0.7);
-  pointer-events: auto;
+.progressTrack {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--app-scrollbar);
+  overflow: hidden;
 }
 
-.overlayContentWrap {
-  position: relative;
-  margin: 40px auto;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
-  border-radius: 8px;
+.progressBar {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--app-accent), var(--app-accent-hover));
+  transition: width 0.2s ease;
+}
+
+.progressBarIndeterminate {
+  width: 40%;
+  animation: progress-indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes progress-indeterminate {
+  0% { margin-left: -40%; }
+  100% { margin-left: 100%; }
+}
+
+.progressText {
+  font-size: 12px;
+  color: var(--app-text-secondary);
+  text-align: center;
+  min-height: 16px;
 }
 
 /* ====== Mobile Responsive ====== */

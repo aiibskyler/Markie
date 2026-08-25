@@ -5,6 +5,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useStore } from '../../stores/useStore';
 import { themes } from '../../themes/presets';
 import { t } from '../../i18n';
+import { MAX_EXPORT_PIXEL } from '../../utils/exportImage';
 import styles from './Preview.module.css';
 import type { DecorationConfig } from '../../types';
 
@@ -164,6 +165,7 @@ export default function Preview() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [pages, setPages] = useState<string[]>([]);
+  const [autoPaginate, setAutoPaginate] = useState(false);
 
   // Observe the scroll container width
   useEffect(() => {
@@ -242,15 +244,32 @@ export default function Preview() {
     useStore.getState().setPreviewScale(stepped);
   }, [containerWidth, contentWidth]);
 
+  // Max height (CSS px) a single exported image may have for the current
+  // export width/scale so the output canvas stays within browser limits.
+  // Beyond this the content is split into multiple pages (see autoPaginate).
+  const autoPageHeight = useMemo(() => {
+    const s = Math.max(1, exportConfig.scale);
+    return Math.floor(Math.min(
+      MAX_EXPORT_PIXEL / s,
+      (MAX_EXPORT_PIXEL * MAX_EXPORT_PIXEL) / Math.max(1, contentWidth * s * s)
+    ));
+  }, [exportConfig.scale, contentWidth]);
+
   // In free mode, height is auto (determined by content). Other modes use fixed heights.
+  // When exporting PNG content that would exceed the browser canvas limit, the
+  // preview automatically paginates it at the maximum safe page height so the
+  // export visibly splits into multiple images. PDF/HTML exports are not
+  // limited by canvas size and keep the single long-page layout.
   const contentHeight = useMemo((): number | undefined => {
     switch (exportConfig.mode) {
-      case 'xiaohongshu': return Math.max(720, contentWidth * (4 / 3));
+      case 'xiaohongshu': return autoPaginate ? autoPageHeight : Math.max(720, contentWidth * (4 / 3));
       case 'a4-portrait': return 1123;
       case 'a4-landscape': return 794;
-      default: return undefined; // free mode: auto height
+      default: return autoPaginate ? autoPageHeight : undefined; // free mode: auto height
     }
-  }, [exportConfig, contentWidth]);
+  }, [exportConfig, contentWidth, autoPaginate, autoPageHeight]);
+
+  const isPaginated = isA4Mode(exportConfig.mode) || autoPaginate;
 
   const elementStyleVars = useMemo((): React.CSSProperties => {
     const headingSize = exportConfig.mode === 'moments'
@@ -402,20 +421,22 @@ export default function Preview() {
 
   const contentAreaMetrics = useMemo(() => {
     const canvasPadding = elementStyles.canvasPadding;
-    const borderExtra = decoration.borderFrame.enabled
+    const hasFrame = decoration.borderFrame.enabled;
+    const borderExtra = hasFrame
       ? decoration.borderFrame.padding + decoration.borderFrame.width
       : 0;
 
+    // Only apply frame insets when the frame is actually rendered; without the
+    // frame, logo/QR insets are already counted via reservedSpace, and applying
+    // both would make pagination far more conservative than the real layout.
     const horizontalInset = canvasPadding * 2
-      + frameInsets.left
-      + frameInsets.right
+      + (hasFrame ? frameInsets.left + frameInsets.right : 0)
       + reservedSpace.left
       + reservedSpace.right
       + borderExtra * 2;
 
     const verticalInset = canvasPadding * 2
-      + frameInsets.top
-      + frameInsets.bottom
+      + (hasFrame ? frameInsets.top + frameInsets.bottom : 0)
       + reservedSpace.top
       + reservedSpace.bottom
       + borderExtra * 2;
@@ -425,11 +446,49 @@ export default function Preview() {
       height: contentHeight != null
         ? Math.max(120, contentHeight - verticalInset)
         : undefined,
+      verticalInset,
     };
   }, [contentWidth, contentHeight, decoration.borderFrame.enabled, decoration.borderFrame.padding, decoration.borderFrame.width, elementStyles.canvasPadding, frameInsets.bottom, frameInsets.left, frameInsets.right, frameInsets.top, reservedSpace.bottom, reservedSpace.left, reservedSpace.right, reservedSpace.top]);
 
+  // Non-A4 modes: decide whether the content is too tall for a single
+  // exported image. Auto-pagination is an export-PNG concern only (the canvas
+  // limit), so it follows the export format rather than the size mode — any
+  // mode exports split into multiple images the moment PNG is chosen.
+  // DOM measurement must happen in an effect, so the sync state update here
+  // is required (same pattern as the pagination effect below).
   useEffect(() => {
-    if (!isA4Mode(exportConfig.mode) || !contentAreaMetrics.height) {
+    if (isA4Mode(exportConfig.mode) || exportConfig.format !== 'png') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setAutoPaginate(false);
+      return;
+    }
+
+    const measureEl = measureRef.current;
+    if (!measureEl) {
+      return;
+    }
+
+    const totalContent = measureEl.scrollHeight;
+    const needsPagination = totalContent + contentAreaMetrics.verticalInset > autoPageHeight;
+    setAutoPaginate((prev) => (prev === needsPagination ? prev : needsPagination));
+  }, [
+    exportConfig.mode,
+    exportConfig.format,
+    renderedHtml,
+    elementStyleVars,
+    contentWidth,
+    contentAreaMetrics.verticalInset,
+    autoPageHeight,
+  ]);
+
+  useEffect(() => {
+    if (!contentAreaMetrics.height) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPages([]);
+      return;
+    }
+
+    if (!isA4Mode(exportConfig.mode) && !autoPaginate) {
       setPages([]);
       return;
     }
@@ -449,14 +508,29 @@ export default function Preview() {
     let startIndex = 0;
 
     while (startIndex < children.length) {
-      const pageStartTop = children[startIndex].offsetTop;
+      // The page shell reproduces the measure wrapper's content-box geometry,
+      // so a page containing children [start..end) re-renders them at the same
+      // relative positions they occupy in the wrapper — except that the slice
+      // starts at its own content-box origin: the first child's margin-top is
+      // inside the page, while offsetTop only measures from the border box.
+      // Rebasing on (offsetTop - marginTop) makes the slice's local box exactly
+      // reproducible on the page.
+      const firstChild = children[startIndex];
+      const firstMarginTop = parseFloat(window.getComputedStyle(firstChild).marginTop) || 0;
+      const pageBaseTop = firstChild.offsetTop - firstMarginTop;
+
       let endIndex = startIndex;
 
       while (endIndex < children.length) {
         const child = children[endIndex];
-        const childBottom = child.offsetTop + child.offsetHeight;
+        // Margins between siblings are collapsed into the offsets; only the
+        // checked child's own bottom margin is not, so it must be added —
+        // otherwise pages overflow by that margin and the clipped preview
+        // diverges from the export.
+        const marginBottom = parseFloat(window.getComputedStyle(child).marginBottom) || 0;
+        const childBottom = child.offsetTop + child.offsetHeight + marginBottom;
 
-        if (childBottom - pageStartTop > contentAreaMetrics.height) {
+        if (childBottom - pageBaseTop > contentAreaMetrics.height) {
           if (endIndex === startIndex) {
             endIndex += 1;
           }
@@ -475,7 +549,7 @@ export default function Preview() {
     }
 
     setPages(nextPages);
-  }, [contentAreaMetrics.height, exportConfig.mode, renderedHtml, elementStyleVars]);
+  }, [contentAreaMetrics.height, exportConfig.mode, renderedHtml, elementStyleVars, autoPaginate]);
 
   const renderMainContent = (pageHtml: string, pageIndex: number, pageCount: number) => (
     <>
@@ -545,16 +619,18 @@ export default function Preview() {
         ...elementStyleVars,
         width: contentWidth,
         ...(contentHeight != null
-          ? exportConfig.mode === 'xiaohongshu'
-            ? { minHeight: contentHeight }
-            : { minHeight: contentHeight, height: contentHeight }
+          ? isPaginated
+            ? { minHeight: contentHeight, height: contentHeight }
+            : exportConfig.mode === 'xiaohongshu'
+              ? { minHeight: contentHeight }
+              : {}
           : {}),
         position: 'relative',
         padding: elementStyles.canvasPadding,
         overflow: 'hidden',
         flexShrink: 0,
       }}
-      data-export-page={isA4Mode(exportConfig.mode) ? 'markie-page' : undefined}
+      data-export-page={isPaginated ? 'markie-page' : undefined}
     >
       {watermarkStyle && <div style={watermarkStyle} />}
 
@@ -619,6 +695,11 @@ export default function Preview() {
     <div className={styles.preview}>
       <div className={styles.header}>
         <span className={styles.title}>{t('preview.title', language)}</span>
+        {autoPaginate && (
+          <span className={styles.splitBadge}>
+            {t('preview.paginated', language).replace('{n}', String(pages.length || 0))}
+          </span>
+        )}
         <div className={styles.scaleControls}>
           <button className={styles.scaleBtn} onClick={() => useStore.getState().setPreviewScale(Math.max(0.3, Math.round((previewScale - 0.05) * 100) / 100))}>−</button>
           <span className={styles.scaleValue}>{Math.round(previewScale * 100)}%</span>
@@ -629,33 +710,31 @@ export default function Preview() {
         <div className={styles.scaleWrapper} style={{ transform: `scale(${previewScale})`, transformOrigin: 'top center' }}>
           <div
             ref={contentRef}
-            className={isA4Mode(exportConfig.mode) ? styles.document : undefined}
+            className={isPaginated ? styles.document : undefined}
             data-export="markie-content"
           >
-            {isA4Mode(exportConfig.mode)
+            {isPaginated
               ? (pages.length > 0 ? pages : ['']).map((pageHtml, index, arr) => renderPageShell(pageHtml, index, arr.length))
               : renderPageShell(renderedHtml, 0, 1)}
           </div>
         </div>
       </div>
-      {isA4Mode(exportConfig.mode) && (
-        <div className={styles.measureLayer} aria-hidden="true">
-          <div
-            ref={measureRef}
-            className={styles.content}
-            style={{
-              ...elementStyleVars,
-              width: contentAreaMetrics.width,
-              position: 'absolute',
-              left: -99999,
-              top: 0,
-              visibility: 'hidden',
-              pointerEvents: 'none',
-            }}
-            dangerouslySetInnerHTML={{ __html: renderedHtml }}
-          />
-        </div>
-      )}
+      <div className={styles.measureLayer} aria-hidden="true">
+        <div
+          ref={measureRef}
+          className={styles.content}
+          style={{
+            ...elementStyleVars,
+            width: contentAreaMetrics.width,
+            position: 'absolute',
+            left: -99999,
+            top: 0,
+            visibility: 'hidden',
+            pointerEvents: 'none',
+          }}
+          dangerouslySetInnerHTML={{ __html: renderedHtml }}
+        />
+      </div>
     </div>
   );
 }

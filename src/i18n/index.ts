@@ -17,6 +17,7 @@ const translations: Record<Lang, Record<string, string>> = {
 
     // Preview
     'preview.title': '预览',
+    'preview.paginated': '已自动分页 · 将导出 {n} 张图',
 
     // ThemePanel
     'theme.title': '主题',
@@ -122,6 +123,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'export.previewScale': '预览缩放',
     'export.exportBtn': '导出',
     'export.exporting': '导出中...',
+    'export.rendering': '正在渲染…',
+    'export.progress': '正在导出 {done}/{total} 张…',
+    'export.failed': '导出失败',
   },
   en: {
     // Toolbar
@@ -139,6 +143,7 @@ const translations: Record<Lang, Record<string, string>> = {
 
     // Preview
     'preview.title': 'Preview',
+    'preview.paginated': 'Paginated · {n} images',
 
     // ThemePanel
     'theme.title': 'Theme',
@@ -242,6 +247,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'export.previewScale': 'Preview Scale',
     'export.exportBtn': 'Export',
     'export.exporting': 'Exporting...',
+    'export.rendering': 'Rendering…',
+    'export.progress': 'Exporting {done}/{total} images…',
+    'export.failed': 'Export failed',
   },
 };
 

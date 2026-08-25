@@ -1,9 +1,16 @@
 import { domToBlob } from 'modern-screenshot';
 import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
 
-const MAX_CANVAS_DIMENSION = 16384;
-const MAX_CANVAS_AREA = 16384 * 16384;
+/**
+ * Safe browser canvas limit (dimension and area, in output pixels). A single
+ * exported image can never exceed this: modern-screenshot silently returns a
+ * 0-byte blob beyond it, and html2canvas/clone clips. Preview and export both
+ * use it as the cap for a single page/image.
+ */
+export const MAX_EXPORT_PIXEL = 16384;
+
+const MAX_CANVAS_DIMENSION = MAX_EXPORT_PIXEL;
+const MAX_CANVAS_AREA = MAX_EXPORT_PIXEL * MAX_EXPORT_PIXEL;
 
 function getComputedBackgroundColor(element: HTMLElement, fallback: string | null = '#ffffff') {
   const computedBg = window.getComputedStyle(element).backgroundColor;
@@ -51,32 +58,6 @@ async function renderChunk(
     height: chunkHeight,
     windowWidth: fullWidth,
     windowHeight: fullHeight,
-  });
-}
-
-function stitchCanvasChunks(
-  chunks: HTMLCanvasElement[],
-  totalWidth: number,
-  totalHeight: number
-): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const canvas = document.createElement('canvas');
-    canvas.width = totalWidth;
-    canvas.height = totalHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      reject(new Error('Failed to get canvas 2d context'));
-      return;
-    }
-    let currentY = 0;
-    for (const chunk of chunks) {
-      ctx.drawImage(chunk, 0, currentY);
-      currentY += chunk.height;
-    }
-    canvas.toBlob(
-      (b) => b ? resolve(b) : reject(new Error('toBlob returned null')),
-      'image/png'
-    );
   });
 }
 
@@ -156,8 +137,28 @@ async function renderNative(element: HTMLElement, scale: number, fullWidth: numb
     height: fullHeight,
     ...(bgColor ? { backgroundColor: bgColor } : {}),
   });
-  if (!blob) throw new Error('modern-screenshot returned null');
+  // modern-screenshot silently produces a 0-byte blob when the canvas exceeds
+  // the browser's dimension/area limits (e.g. a 540 × ~100k px long image) —
+  // treat that as a failure so the chunked fallback below can handle it.
+  if (!blob || blob.size === 0) {
+    throw new Error('modern-screenshot produced an empty image (canvas limits exceeded)');
+  }
   return blob;
+}
+
+// TEMP DEBUG: stash last rendered export blob as data URL for diagnosis
+async function debugStashBlob(blob: Blob) {
+  try {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    (window as unknown as Record<string, unknown>).__markieLastExport = dataUrl;
+  } catch {
+    /* ignore */
+  }
 }
 
 async function renderElementToBlob(
@@ -193,7 +194,7 @@ async function renderElementToBlob(
 
         return await new Promise<Blob>((resolve, reject) => {
           canvas.toBlob(
-            (b) => b ? resolve(b) : reject(new Error('toBlob returned null')),
+            (b) => (b && b.size > 0 ? resolve(b) : reject(new Error('toBlob returned an empty image'))),
             'image/png'
           );
         });
@@ -228,7 +229,7 @@ async function renderElementToBlob(
 
       return await new Promise<Blob>((resolve, reject) => {
         out.toBlob(
-          (b) => b ? resolve(b) : reject(new Error('toBlob returned null')),
+          (b) => (b && b.size > 0 ? resolve(b) : reject(new Error('toBlob returned an empty image'))),
           'image/png'
         );
       });
@@ -238,45 +239,64 @@ async function renderElementToBlob(
     const numChunks = Math.ceil(height / maxChunkH);
     const chunks: HTMLCanvasElement[] = [];
 
-    for (let i = 0; i < numChunks; i++) {
-      const y = i * maxChunkH;
-      const chunkH = Math.min(maxChunkH, height - y);
-      const chunkCanvas = await renderChunk(clone, scale, y, chunkH, width, height, bgColor);
-      chunks.push(chunkCanvas);
-    }
-
     const totalScaledWidth = width * scale;
     const totalScaledHeight = height * scale;
 
-    if (totalScaledWidth > MAX_CANVAS_DIMENSION || totalScaledHeight > MAX_CANVAS_DIMENSION) {
+    // When the full-size canvas would exceed browser limits (16384px per
+    // dimension / 16384² px area), render at a reduced scale so the output is
+    // still a complete image instead of a 0-byte download.
+    const exceedsLimits = totalScaledWidth > MAX_CANVAS_DIMENSION
+      || totalScaledHeight > MAX_CANVAS_DIMENSION
+      || totalScaledWidth * totalScaledHeight > MAX_CANVAS_AREA;
+
+    let finalW = totalScaledWidth;
+    let finalH = totalScaledHeight;
+    let renderScale = scale;
+
+    if (exceedsLimits) {
       const fitScale = Math.min(
         MAX_CANVAS_DIMENSION / totalScaledWidth,
         MAX_CANVAS_DIMENSION / totalScaledHeight,
+        Math.sqrt(MAX_CANVAS_AREA / (totalScaledWidth * totalScaledHeight)),
         1
       );
-      const finalW = Math.floor(totalScaledWidth * fitScale);
-      const finalH = Math.floor(totalScaledHeight * fitScale);
-      const canvas = document.createElement('canvas');
-      canvas.width = finalW;
-      canvas.height = finalH;
-      const ctx = canvas.getContext('2d')!;
-      let currentY = 0;
-
-      for (const chunk of chunks) {
-        const drawH = chunk.height * fitScale;
-        ctx.drawImage(chunk, 0, currentY, finalW, drawH);
-        currentY += drawH;
-      }
-
-      return await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob(
-          (b) => b ? resolve(b) : reject(new Error('toBlob returned null')),
-          'image/png'
-        );
-      });
+      finalW = Math.max(1, Math.floor(totalScaledWidth * fitScale));
+      finalH = Math.max(1, Math.floor(totalScaledHeight * fitScale));
+      renderScale = scale * fitScale;
+      console.warn(
+        `[export] content exceeds canvas limits (${totalScaledWidth}x${totalScaledHeight}), output scaled to ${finalW}x${finalH} — consider shorter content or a smaller export width`
+      );
     }
 
-    return stitchCanvasChunks(chunks, totalScaledWidth, totalScaledHeight);
+    const chunkH = Math.min(maxChunkH, getMaxChunkHeight(width, renderScale));
+
+    for (let i = 0; i < numChunks; i++) {
+      const y = i * chunkH;
+      const h = Math.min(chunkH, height - y);
+      const chunkCanvas = await renderChunk(clone, renderScale, y, h, width, height, bgColor);
+      chunks.push(chunkCanvas);
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = finalW;
+    canvas.height = finalH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Failed to get canvas 2d context');
+    }
+    let currentY = 0;
+    for (const chunk of chunks) {
+      ctx.drawImage(chunk, 0, currentY);
+      currentY += chunk.height;
+    }
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (b) => (b && b.size > 0 ? resolve(b) : reject(new Error('toBlob returned an empty image'))),
+        'image/png'
+      );
+    });
+    return blob;
   } finally {
     cleanup();
   }
@@ -286,165 +306,142 @@ function getPageNodes(element: HTMLElement): HTMLElement[] {
   return Array.from(element.querySelectorAll<HTMLElement>('[data-export-page="markie-page"]'));
 }
 
+export type ExportProgress = (done: number, total: number) => void;
+
+/**
+ * The visible (layout) height of an element.
+ *
+ * Absolute decorations — watermark (inset -90%), logo, QR code — and content
+ * that overflows a fixed-height page can inflate `scrollHeight` far beyond the
+ * element's laid-out box. The preview clips the element at its box
+ * (`overflow: hidden`), so the exported image must be captured at the layout
+ * height as well; otherwise exports (e.g. A4 pages with a watermark) come out
+ * much taller than what the preview shows.
+ */
+function getExportHeight(element: HTMLElement): number {
+  return Math.min(element.scrollHeight, element.offsetHeight || element.scrollHeight);
+}
+
 /**
  * Export an element to PNG.
  */
 export async function exportToPNG(
   element: HTMLElement,
   scale = 2,
-  width?: number
+  width?: number,
+  onProgress?: ExportProgress
 ): Promise<string> {
   await document.fonts.ready;
 
+  onProgress?.(1, 1);
+
   const fullWidth = width || element.scrollWidth;
-  const fullHeight = element.scrollHeight;
+  const fullHeight = getExportHeight(element);
 
   const blob = await renderElementToBlob(element, scale, fullWidth, fullHeight);
+  await debugStashBlob(blob); // TEMP DEBUG
   return URL.createObjectURL(blob);
 }
 
 export async function exportToPNGPages(
   element: HTMLElement,
   scale = 2,
-  width?: number
+  width?: number,
+  onProgress?: ExportProgress
 ): Promise<string[]> {
   await document.fonts.ready;
 
   const pageNodes = getPageNodes(element);
   if (pageNodes.length === 0) {
-    return [await exportToPNG(element, scale, width)];
+    return [await exportToPNG(element, scale, width, onProgress)];
   }
 
   const urls: string[] = [];
-  for (const pageEl of pageNodes) {
+  for (let i = 0; i < pageNodes.length; i++) {
+    const pageEl = pageNodes[i];
     const pageWidth = width || pageEl.scrollWidth;
-    const pageHeight = pageEl.scrollHeight;
+    const pageHeight = getExportHeight(pageEl);
     const blob = await renderElementToBlob(pageEl, scale, pageWidth, pageHeight);
     urls.push(URL.createObjectURL(blob));
+    onProgress?.(i + 1, pageNodes.length);
   }
 
   return urls;
 }
 
 /**
- * jsPDF max page dimension is 14400pt. With unit='px', jsPDF converts 1px = 96/72 pt.
- * Safe CSS pixel limit: 14400 * 72/96 = 10800px. Use slightly less to avoid floating-point edge cases.
+ * Open a hidden same-origin iframe prepared for printing, wait until fonts,
+ * stylesheets and images are rendered, then trigger the browser's print
+ * dialog. The user saves it as PDF — producing a real, selectable-text PDF
+ * with vector fonts instead of a flattened PNG screenshot.
  */
-const MAX_PDF_PAGE = 10790;
+async function printElementToPDF(html: string): Promise<void> {
+  const frame = document.createElement('iframe');
+  frame.style.cssText = 'position: fixed; left: -10000px; top: 0; width: 1200px; height: 900px; border: 0; opacity: 0; pointer-events: none;';
+  document.body.appendChild(frame);
+  frame.srcdoc = html;
+
+  const doc = frame.contentDocument;
+  const win = frame.contentWindow;
+  if (!doc || !win) {
+    frame.remove();
+    throw new Error('Failed to create print window');
+  }
+
+  const withTimeout = <T,>(p: Promise<T>, ms: number) => Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+
+  try {
+    // Let stylesheets, fonts and images finish loading before printing.
+    await withTimeout(new Promise<void>((resolve) => {
+      if (doc.readyState === 'complete') {
+        resolve();
+      } else {
+        doc.addEventListener('load', () => resolve(), { once: true });
+      }
+    }), 8000);
+    try {
+      await withTimeout(doc.fonts.ready, 8000);
+    } catch { /* fonts may never settle */ }
+    await withTimeout(Promise.all(Array.from(doc.images).map((img) => {
+      if (img.complete) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+      });
+    })), 8000);
+
+    // Keep the frame alive while the print dialog is up; clean up after.
+    const cleanup = () => frame.remove();
+    win.addEventListener('afterprint', () => cleanup(), { once: true });
+    setTimeout(cleanup, 120000);
+
+    win.focus();
+    win.print();
+  } catch (err) {
+    frame.remove();
+    throw err;
+  }
+}
 
 /**
- * Export an element to PDF.
+ * Export an element to PDF via the browser's print dialog (real text PDF):
+ * the fully styled export HTML is loaded into a hidden iframe and printed.
+ * In Chrome/Edge the user picks "Save as PDF" in the print preview; the
+ * suggested file name comes from the exported document title.
  */
 export async function exportToPDF(
   element: HTMLElement,
-  scale = 2,
-  width?: number
+  filename = 'markie-export.pdf',
+  onProgress?: ExportProgress
 ): Promise<void> {
-  await document.fonts.ready;
-
-  const pageNodes = getPageNodes(element);
-  let pages: Array<{ dataUrl: string; width: number; height: number }> = [];
-
-  if (pageNodes.length > 0) {
-    for (const pageEl of pageNodes) {
-      const pw = width || pageEl.scrollWidth;
-      const ph = pageEl.scrollHeight;
-      const blob = await renderElementToBlob(pageEl, scale, pw, ph);
-      pages.push({ dataUrl: await blobToDataUrl(blob), width: pw, height: ph });
-    }
-  } else {
-    const fw = width || element.scrollWidth;
-    const fh = element.scrollHeight;
-    const blob = await renderElementToBlob(element, scale, fw, fh);
-
-    if (fh > MAX_PDF_PAGE) {
-      pages = await splitBlobToPages(blob, fw, fh, scale);
-    } else {
-      pages.push({ dataUrl: await blobToDataUrl(blob), width: fw, height: fh });
-    }
-  }
-
-  buildPDF(pages);
+  onProgress?.(1, 1);
+  const title = filename.replace(/\.pdf$/i, '') || 'Markie Export';
+  const html = exportToHTML(element, title);
+  await printElementToPDF(html);
+  onProgress?.(1, 1);
 }
 
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
-
-function blobToImage(blob: Blob): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(img.src);
-      resolve(img);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(img.src);
-      reject(new Error('Failed to load rendered image'));
-    };
-    img.src = URL.createObjectURL(blob);
-  });
-}
-
-async function splitBlobToPages(
-  blob: Blob,
-  cssWidth: number,
-  cssHeight: number,
-  scale: number
-): Promise<Array<{ dataUrl: string; width: number; height: number }>> {
-  const img = await blobToImage(blob);
-  const numPages = Math.ceil(cssHeight / MAX_PDF_PAGE);
-  const pages: Array<{ dataUrl: string; width: number; height: number }> = [];
-
-  for (let i = 0; i < numPages; i++) {
-    const yCss = i * MAX_PDF_PAGE;
-    const pageCssHeight = Math.min(MAX_PDF_PAGE, cssHeight - yCss);
-
-    const sx = 0;
-    const sy = Math.round(yCss * scale);
-    const sw = Math.round(cssWidth * scale);
-    const sh = Math.round(pageCssHeight * scale);
-
-    const canvas = document.createElement('canvas');
-    canvas.width = sw;
-    canvas.height = sh;
-    const ctx = canvas.getContext('2d')!;
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-
-    pages.push({
-      dataUrl: canvas.toDataURL('image/png'),
-      width: cssWidth,
-      height: pageCssHeight,
-    });
-  }
-
-  return pages;
-}
-
-function buildPDF(pages: Array<{ dataUrl: string; width: number; height: number }>): void {
-  if (pages.length === 0) return;
-  const first = pages[0];
-  const pdf = new jsPDF({
-    orientation: first.width > first.height ? 'landscape' : 'portrait',
-    unit: 'px',
-    format: [first.width, first.height],
-  });
-  pdf.setProperties({ title: 'Markie Export', creator: 'Markie' });
-  pages.forEach((page, i) => {
-    if (i > 0) {
-      pdf.addPage([page.width, page.height], page.width > page.height ? 'landscape' : 'portrait');
-    }
-    pdf.addImage(page.dataUrl, 'PNG', 0, 0, page.width, page.height);
-  });
-  pdf.save('markie-export.pdf');
-}
-
-export function exportToHTML(element: HTMLElement): string {
+export function exportToHTML(element: HTMLElement, title = 'Markie Export'): string {
   const clone = element.cloneNode(true) as HTMLElement;
   clone.style.transform = 'none';
   clone.style.width = 'auto';
@@ -460,18 +457,35 @@ export function exportToHTML(element: HTMLElement): string {
     clone.style.padding = '32px 0';
   }
 
-  const styleEls = document.querySelectorAll('style');
-  let styleText = '';
-  styleEls.forEach((s) => {
-    if (s.textContent) styleText += s.textContent + '\n';
+  // Collect styles: production builds load CSS via <link>, dev injections use
+  // <style> nodes, and cross-origin sheets (e.g. KaTeX CDN) cannot be read but
+  // can be re-linked.
+  const styleTexts: string[] = [];
+  const linkTags: string[] = [];
+  document.querySelectorAll('style').forEach((s) => {
+    if (s.textContent) styleTexts.push(s.textContent);
   });
+  for (const sheet of Array.from(document.styleSheets)) {
+    const owner = sheet.ownerNode as HTMLElement | null;
+    if (owner && owner.tagName === 'STYLE') continue; // already collected above
+    try {
+      for (const rule of Array.from(sheet.cssRules)) styleTexts.push(rule.cssText);
+    } catch {
+      // Cross-origin stylesheet — re-declare it as a <link> instead.
+      if (owner instanceof HTMLLinkElement && owner.rel === 'stylesheet' && owner.href) {
+        linkTags.push(`<link rel="stylesheet" href="${owner.href}">`);
+      }
+    }
+  }
+  const styleText = styleTexts.join('\n');
+  const extraLinks = linkTags.join('\n');
 
   const exportLayoutOverrides = `
 html, body {
   width: 100% !important;
   height: auto !important;
   min-height: 100% !important;
-  overflow: auto !important;
+  overflow: visible !important;
 }
 
 body {
@@ -488,6 +502,19 @@ body {
   height: auto !important;
   overflow: visible !important;
 }
+
+/* Keep colors, gradients and the watermark when printing to PDF */
+@media print {
+  html, body {
+    padding: 0 !important;
+    background: #ffffff !important;
+    overflow: visible !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
 `;
 
   const html = `<!DOCTYPE html>
@@ -495,7 +522,8 @@ body {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Markie Export</title>
+  <title>${title.replace(/</g, '&lt;')}</title>
+  ${extraLinks}
   <style>${styleText}\n${exportLayoutOverrides}</style>
 </head>
 <body>

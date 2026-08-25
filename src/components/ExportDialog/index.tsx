@@ -1,91 +1,15 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useCallback } from 'react';
 import { useStore } from '../../stores/useStore';
-import { useIsMobile } from '../../hooks/useIsMobile';
 import { exportToPNG, exportToPNGPages, exportToPDF, exportToHTML, downloadDataUrl, downloadDataUrls, downloadHTML } from '../../utils/exportImage';
+import { getExportName } from '../../utils/exportFilename';
 import { t } from '../../i18n';
 import styles from './ExportDialog.module.css';
-import type { ExportFormat, ExportMode } from '../../types';
-
-function isA4Mode(mode: ExportMode) {
-  return mode === 'a4-portrait' || mode === 'a4-landscape';
-}
+import type { ExportFormat } from '../../types';
 
 export default function ExportDialog() {
-  const { exportConfig, setExportConfig, setActivePanel, language } = useStore();
-  const isMobile = useIsMobile();
+  const { exportConfig, setExportConfig, setActivePanel, language, markdown } = useStore();
   const [exporting, setExporting] = useState(false);
-  const [overlayMounted, setOverlayMounted] = useState(false);
-  const [overlayVisible, setOverlayVisible] = useState(false);
-  const [exportClone, setExportClone] = useState<HTMLElement | null>(null);
-  const overlayContentRef = useRef<HTMLDivElement>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const scrollResolveRef = useRef<() => void>(() => {});
-  const scrollDoneRef = useRef<Promise<void>>(Promise.resolve());
-
-  // Insert clone into overlay
-  useEffect(() => {
-    if (overlayContentRef.current && exportClone) {
-      overlayContentRef.current.innerHTML = '';
-      overlayContentRef.current.appendChild(exportClone);
-    }
-  }, [exportClone, overlayMounted]);
-
-  // Overlay enter/exit + auto-scroll
-  useEffect(() => {
-    let rafId: number;
-
-    if (isMobile) {
-      setOverlayMounted(false);
-      setOverlayVisible(false);
-      scrollResolveRef.current();
-      return () => undefined;
-    }
-
-    if (exporting) {
-      setOverlayMounted(true);
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setOverlayVisible(true);
-          // Start smooth auto-scroll after enter animation settles
-          setTimeout(() => {
-            const el = overlayRef.current;
-            if (!el) { scrollResolveRef.current(); return; }
-            const baseSpeed = 800;
-            const accel = 5000;
-            let speed = baseSpeed;
-            let lastTime: number | null = null;
-            const tick = (now: number) => {
-              if (lastTime === null) { lastTime = now; }
-              const dt = Math.min((now - lastTime) / 1000, 0.05);
-              lastTime = now;
-              speed += accel * dt;
-              if (el.scrollTop < el.scrollHeight - el.clientHeight) {
-                el.scrollTop += speed * dt;
-                rafId = requestAnimationFrame(tick);
-              } else {
-                setTimeout(() => scrollResolveRef.current(), 400);
-              }
-            };
-            rafId = requestAnimationFrame(tick);
-          }, 600);
-        });
-      });
-    } else {
-      setOverlayVisible(false);
-      const timer = setTimeout(() => {
-        setOverlayMounted(false);
-        setExportClone(null);
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      // Safety: resolve if animation was cancelled before reaching bottom
-      scrollResolveRef.current();
-    };
-  }, [exporting, isMobile]);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   const L = (key: string) => t(key, language);
 
@@ -109,35 +33,43 @@ export default function ExportDialog() {
     const el = document.querySelector('[data-export="markie-content"]') as HTMLElement;
     if (!el) return;
 
-    const clone = el.cloneNode(true) as HTMLElement;
-    setExportClone(clone);
-
-    // Create promise BEFORE setting exporting, so the effect can resolve it
-    scrollDoneRef.current = new Promise<void>(resolve => {
-      scrollResolveRef.current = resolve;
-    });
     setExporting(true);
+    setProgress({ done: 0, total: 0 });
 
     try {
       const exportWidth = getExportWidth();
-      const exportPromise = exportConfig.format === 'png'
-        ? isA4Mode(exportConfig.mode)
-          ? exportToPNGPages(el, exportConfig.scale, exportWidth).then((urls) =>
-              downloadDataUrls(urls, (index) => `markie-export-page-${index + 1}.png`)
-            )
-          : exportToPNG(el, exportConfig.scale, exportWidth).then(url => downloadDataUrl(url, 'markie-export.png'))
-        : exportConfig.format === 'pdf'
-          ? exportToPDF(el, exportConfig.scale, exportWidth)
-          : Promise.resolve(downloadHTML(exportToHTML(el), 'markie-export.html'));
+      // File name derived from the article title (first heading) or the
+      // leading words of the content.
+      const exportBaseName = getExportName(markdown);
+      // A4 modes and automatically paginated long content both render page
+      // shells with data-export-page; detect them from the DOM so a single
+      // image is exported when the content fits.
+      const hasPageNodes = el.querySelectorAll('[data-export-page="markie-page"]').length > 0;
+      const onProgress = (done: number, total: number) => setProgress({ done, total });
 
-      // Wait for BOTH the export AND the scroll animation to finish
-      await Promise.all([exportPromise, scrollDoneRef.current]);
+      const exportPromise = exportConfig.format === 'png'
+        ? hasPageNodes
+          ? exportToPNGPages(el, exportConfig.scale, exportWidth, onProgress).then((urls) =>
+              downloadDataUrls(urls, (index) => `${exportBaseName}-page-${index + 1}.png`)
+            )
+          : exportToPNG(el, exportConfig.scale, exportWidth, onProgress).then(url => downloadDataUrl(url, `${exportBaseName}.png`))
+        : exportConfig.format === 'pdf'
+          ? exportToPDF(el, `${exportBaseName}.pdf`, onProgress)
+          : Promise.resolve(downloadHTML(exportToHTML(el), `${exportBaseName}.html`));
+
+      await exportPromise;
     } catch (err) {
       console.error('Export failed:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      window.alert(`${t('export.failed', language)}\n${message}`);
     } finally {
       setExporting(false);
+      setProgress(null);
     }
-  }, [exportConfig, getExportWidth]);
+  }, [exportConfig, getExportWidth, language, markdown]);
+
+  const showProgress = exporting && progress !== null;
+  const isMulti = showProgress && progress!.total > 1;
 
   return (
     <div className={styles.panel}>
@@ -160,23 +92,24 @@ export default function ExportDialog() {
           <button className={styles.exportBtn} onClick={handleExport} disabled={exporting}>
             {exporting ? L('export.exporting') : L('export.exportBtn')}
           </button>
+
+          {showProgress && (
+            <div className={styles.progressWrap} role="status" aria-live="polite">
+              <div className={styles.progressTrack}>
+                <div
+                  className={`${styles.progressBar} ${isMulti ? '' : styles.progressBarIndeterminate}`}
+                  style={isMulti ? { width: `${Math.round((progress!.done / progress!.total) * 100)}%` } : undefined}
+                />
+              </div>
+              <span className={styles.progressText}>
+                {isMulti
+                  ? L('export.progress').replace('{done}', String(progress!.done)).replace('{total}', String(progress!.total))
+                  : L('export.rendering')}
+              </span>
+            </div>
+          )}
         </div>
       </div>
-
-      {!isMobile && overlayMounted && createPortal(
-        <div ref={overlayRef} className={`${styles.overlay} ${overlayVisible ? styles.overlayActive : ''}`}>
-          <div
-            className={styles.overlayContentWrap}
-            style={{
-              transform: overlayVisible ? 'none' : 'scale(0.92)',
-              opacity: overlayVisible ? 1 : 0,
-            }}
-          >
-            <div ref={overlayContentRef} />
-          </div>
-        </div>,
-        document.body
-      )}
     </div>
   );
 }

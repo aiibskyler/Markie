@@ -370,10 +370,51 @@ export async function exportToPNGPages(
 }
 
 /**
- * Open a hidden same-origin iframe prepared for printing, wait until fonts,
- * stylesheets and images are rendered, then trigger the browser's print
- * dialog. The user saves it as PDF — producing a real, selectable-text PDF
- * with vector fonts instead of a flattened PNG screenshot.
+ * Build the print document: take the exported HTML and inline every
+ * cross-origin stylesheet (e.g. the KaTeX CDN CSS) so the hidden print
+ * iframe has no network dependency — a slow or blocked CDN previously
+ * stalled the print path with no feedback and no dialog.
+ */
+async function buildPrintHTML(element: HTMLElement, title: string): Promise<string> {
+  let html = exportToHTML(element, title);
+
+  const linkTags = Array.from(html.matchAll(/<link rel="stylesheet" href="([^"]+)">/g));
+  if (linkTags.length === 0) return html;
+
+  const inlined: Array<{ tag: string; css: string }> = [];
+  await Promise.all(linkTags.map(async (m) => {
+    const href = m[1];
+    const tag = m[0];
+    try {
+      const resp = await fetch(href);
+      if (!resp.ok) throw new Error(`stylesheet ${href} returned ${resp.status}`);
+      let css = await resp.text();
+      // Resolve relative URLs (KaTeX fonts) against the stylesheet URL.
+      const base = href.slice(0, href.lastIndexOf('/') + 1);
+      css = css.replace(
+        /url\(\s*(['"]?)(?!https?:|data:)([^'")]+)\1\s*\)/gi,
+        (_whole: string, q: string, path: string) => `url(${q}${new URL(path, base).href}${q})`
+      );
+      inlined.push({ tag, css });
+    } catch {
+      // Keep the <link> as a fallback.
+    }
+  }));
+
+  for (const item of inlined) {
+    html = html.replace(item.tag, `<style>${item.css}</style>`);
+  }
+  return html;
+}
+
+/**
+ * Open a hidden same-origin iframe prepared for printing, wait briefly until
+ * stylesheets, fonts and images are laid out, then trigger the browser's
+ * print dialog. The user saves it as PDF — producing a real, selectable-text
+ * PDF with vector fonts instead of a flattened PNG screenshot.
+ *
+ * Waiting is best-effort: network stalls never abort the print, and the
+ * progress UI gets a frame to render before print() blocks the main thread.
  */
 async function printElementToPDF(html: string): Promise<void> {
   const frame = document.createElement('iframe');
@@ -388,39 +429,41 @@ async function printElementToPDF(html: string): Promise<void> {
     throw new Error('Failed to create print window');
   }
 
-  const withTimeout = <T,>(p: Promise<T>, ms: number) => Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+  const settle = <T,>(p: Promise<T>, ms: number): Promise<T | null> =>
+    Promise.race([p.catch(() => null), new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))]);
 
-  try {
-    // Let stylesheets, fonts and images finish loading before printing.
-    await withTimeout(new Promise<void>((resolve) => {
-      if (doc.readyState === 'complete') {
-        resolve();
-      } else {
-        doc.addEventListener('load', () => resolve(), { once: true });
-      }
-    }), 8000);
-    try {
-      await withTimeout(doc.fonts.ready, 8000);
-    } catch { /* fonts may never settle */ }
-    await withTimeout(Promise.all(Array.from(doc.images).map((img) => {
-      if (img.complete) return Promise.resolve();
-      return new Promise<void>((resolve) => {
-        img.onload = () => resolve();
-        img.onerror = () => resolve();
-      });
-    })), 8000);
+  // Best-effort: wait for the document to load (styled, fonts, images) but
+  // never stall the print for long — Chrome's print preview waits for the
+  // render itself.
+  await settle(new Promise<void>((resolve) => {
+    if (doc.readyState !== 'loading') {
+      resolve();
+    } else {
+      doc.addEventListener('DOMContentLoaded', () => resolve(), { once: true });
+    }
+  }), 3000);
+  await settle(doc.fonts.ready, 3000);
+  await settle(Promise.all(Array.from(doc.images).map((img) => {
+    if (img.complete) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      img.onload = () => resolve();
+      img.onerror = () => resolve();
+    });
+  })), 3000);
 
-    // Keep the frame alive while the print dialog is up; clean up after.
-    const cleanup = () => frame.remove();
-    win.addEventListener('afterprint', () => cleanup(), { once: true });
-    setTimeout(cleanup, 120000);
+  // Let the progress UI render the "Rendering…" state before print()
+  // blocks the main thread.
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => setTimeout(resolve, 30));
+  });
 
-    win.focus();
-    win.print();
-  } catch (err) {
-    frame.remove();
-    throw err;
-  }
+  // Keep the frame alive while the print dialog is up; clean up after.
+  const cleanup = () => frame.remove();
+  win.addEventListener('afterprint', () => cleanup(), { once: true });
+  setTimeout(cleanup, 120000);
+
+  win.focus();
+  win.print();
 }
 
 /**
@@ -436,7 +479,7 @@ export async function exportToPDF(
 ): Promise<void> {
   onProgress?.(1, 1);
   const title = filename.replace(/\.pdf$/i, '') || 'Markie Export';
-  const html = exportToHTML(element, title);
+  const html = await buildPrintHTML(element, title);
   await printElementToPDF(html);
   onProgress?.(1, 1);
 }
